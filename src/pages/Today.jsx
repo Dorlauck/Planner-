@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import Spinner from '../components/Spinner'
+import TaskModal from '../components/TaskModal'
 import {
   toISODate,
   prettyDate,
@@ -21,6 +22,7 @@ export default function Today() {
   const [logs, setLogs] = useState([]) // habit_logs for selected day
   const [loading, setLoading] = useState(true)
   const [newTask, setNewTask] = useState('')
+  const [openTask, setOpenTask] = useState(null)
 
   const iso = toISODate(selected)
 
@@ -166,13 +168,17 @@ export default function Today() {
                     >
                       {task.completed && '✓'}
                     </button>
-                    <span
-                      className={`flex-1 text-sm ${
+                    <button
+                      onClick={() => setOpenTask(task)}
+                      className={`flex-1 text-left text-sm hover:text-peach-600 ${
                         task.completed ? 'line-through text-dusk-400' : 'text-dusk-900'
                       }`}
                     >
                       {task.title}
-                    </span>
+                      {task.notes?.trim() && (
+                        <span className="ml-1.5 text-peach-400" title="Contient des notes">📝</span>
+                      )}
+                    </button>
                     <button
                       onClick={() => deleteTask(task.id)}
                       className="opacity-0 group-hover:opacity-100 text-dusk-300 hover:text-coral-500 transition"
@@ -244,6 +250,17 @@ export default function Today() {
             )}
           </section>
         </div>
+      )}
+
+      {openTask && (
+        <TaskModal
+          task={openTask}
+          onClose={() => setOpenTask(null)}
+          onUpdate={(patch) => {
+            setTasks((ts) => ts.map((t) => (t.id === openTask.id ? { ...t, ...patch } : t)))
+            setOpenTask((o) => (o ? { ...o, ...patch } : o))
+          }}
+        />
       )}
     </div>
   )

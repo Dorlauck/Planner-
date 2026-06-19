@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { compressImage } from '../lib/image'
+import RichEditor from './RichEditor'
 
 const BUCKET = 'task-images'
 
@@ -98,17 +99,6 @@ export default function TaskModal({ task, onClose, onUpdate }) {
     }
   }
 
-  function onPaste(e) {
-    const files = [...(e.clipboardData?.items ?? [])]
-      .filter((i) => i.type.startsWith('image/'))
-      .map((i) => i.getAsFile())
-      .filter(Boolean)
-    if (files.length) {
-      e.preventDefault()
-      handleFiles(files)
-    }
-  }
-
   async function deleteAttachment(att) {
     setAttachments((a) => a.filter((x) => x.id !== att.id))
     await supabase.storage.from(BUCKET).remove([att.storage_path])
@@ -119,7 +109,6 @@ export default function TaskModal({ task, onClose, onUpdate }) {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-dusk-900/40 backdrop-blur-sm"
       onClick={onClose}
-      onPaste={onPaste}
     >
       <div
         className="w-full max-w-lg max-h-[90vh] overflow-y-auto scrollbar-thin bg-cream rounded-3xl shadow-soft p-6 animate-fade-up"
@@ -142,12 +131,12 @@ export default function TaskModal({ task, onClose, onUpdate }) {
           </button>
         </div>
 
-        {/* Notes */}
-        <textarea
-          value={notes}
-          onChange={(e) => onNotes(e.target.value)}
-          placeholder="Tes notes… (tu peux aussi coller une image avec Ctrl/Cmd+V)"
-          className="w-full min-h-[8rem] resize-y bg-white/70 rounded-2xl p-4 text-sm leading-relaxed text-dusk-900 placeholder:text-dusk-300 focus:outline-none focus:ring-2 focus:ring-peach-300"
+        {/* Notes — rich text */}
+        <RichEditor
+          initialHtml={notes}
+          onChange={onNotes}
+          onPasteImage={handleFiles}
+          placeholder="Tes notes… (gras, listes… et colle une image avec Ctrl/Cmd+V)"
         />
 
         {/* Attachments */}
