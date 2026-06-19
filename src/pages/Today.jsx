@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import Spinner from '../components/Spinner'
 import TaskModal from '../components/TaskModal'
+import { deleteTaskWithFiles } from '../lib/tasks'
 import {
   toISODate,
   prettyDate,
@@ -61,7 +62,7 @@ export default function Today() {
 
   async function deleteTask(id) {
     setTasks((t) => t.filter((x) => x.id !== id))
-    await supabase.from('tasks').delete().eq('id', id)
+    await deleteTaskWithFiles(id)
   }
 
   async function toggleHabit(habit) {

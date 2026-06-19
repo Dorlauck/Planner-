@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import Spinner from '../components/Spinner'
 import TaskModal from '../components/TaskModal'
+import { deleteTaskWithFiles } from '../lib/tasks'
 import {
   toISODate,
   monthStart,
@@ -87,7 +88,7 @@ export default function Planning() {
 
   async function remove(id) {
     setTasks((ts) => ts.filter((t) => t.id !== id))
-    await supabase.from('tasks').delete().eq('id', id)
+    await deleteTaskWithFiles(id)
   }
 
   // --- Drag & drop -------------------------------------------------------

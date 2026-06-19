@@ -9,20 +9,26 @@ const COLORS = ['#F6A55C', '#EE7B6B', '#7C6F9E', '#5BA5A0', '#E0A93B', '#C77DBA'
 export default function Goals() {
   const { user } = useAuth()
   const [goals, setGoals] = useState([])
+  const [progress, setProgress] = useState({}) // goal_id -> { total, done }
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', target_date: '', color: COLORS[0] })
 
   useEffect(() => {
-    supabase
-      .from('goals')
-      .select('*')
-      .neq('status', 'archived')
-      .order('position')
-      .then(({ data }) => {
-        setGoals(data ?? [])
-        setLoading(false)
-      })
+    Promise.all([
+      supabase.from('goals').select('*').neq('status', 'archived').order('position'),
+      supabase.from('tasks').select('goal_id, completed').not('goal_id', 'is', null),
+    ]).then(([goalRes, taskRes]) => {
+      setGoals(goalRes.data ?? [])
+      const acc = {}
+      for (const t of taskRes.data ?? []) {
+        const p = (acc[t.goal_id] ??= { total: 0, done: 0 })
+        p.total += 1
+        if (t.completed) p.done += 1
+      }
+      setProgress(acc)
+      setLoading(false)
+    })
   }, [])
 
   async function addGoal(e) {
@@ -157,6 +163,27 @@ export default function Goals() {
                   {goal.description && (
                     <p className="text-sm text-dusk-500 mt-1">{goal.description}</p>
                   )}
+
+                  {(() => {
+                    const p = progress[goal.id]
+                    if (!p) return null
+                    const pct = Math.round((p.done / p.total) * 100)
+                    return (
+                      <div className="mt-3">
+                        <div className="flex justify-between text-xs text-dusk-400 mb-1">
+                          <span>{p.done}/{p.total} tâches</span>
+                          <span>{pct}%</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-peach-50 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{ width: `${pct}%`, backgroundColor: goal.color }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   {goal.target_date && (
                     <span className="inline-block mt-3 text-xs px-2 py-1 rounded-full bg-peach-50 text-peach-600">
                       🗓 {shortDate(goal.target_date)}

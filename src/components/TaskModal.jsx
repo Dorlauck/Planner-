@@ -2,21 +2,39 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { compressImage } from '../lib/image'
+import { TASK_IMAGES_BUCKET as BUCKET } from '../lib/tasks'
 import RichEditor from './RichEditor'
-
-const BUCKET = 'task-images'
 
 export default function TaskModal({ task, onClose, onUpdate }) {
   const { user } = useAuth()
   const [title, setTitle] = useState(task.title)
   const [notes, setNotes] = useState(task.notes ?? '')
   const [attachments, setAttachments] = useState([]) // { id, storage_path, url }
+  const [goals, setGoals] = useState([])
+  const [goalId, setGoalId] = useState(task.goal_id ?? '')
   const [status, setStatus] = useState('idle') // idle | saving | saved
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
   const [lightbox, setLightbox] = useState(null)
   const saveTimer = useRef(null)
   const fileInput = useRef(null)
+
+  // Close on Escape
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  // Load goals for the linker
+  useEffect(() => {
+    supabase
+      .from('goals')
+      .select('id,title,color')
+      .neq('status', 'archived')
+      .order('position')
+      .then(({ data }) => setGoals(data ?? []))
+  }, [])
 
   // Load attachments + signed URLs
   useEffect(() => {
@@ -64,6 +82,10 @@ export default function TaskModal({ task, onClose, onUpdate }) {
   function onNotes(v) {
     setNotes(v)
     scheduleSave({ notes: v })
+  }
+  function onGoal(v) {
+    setGoalId(v)
+    persist({ goal_id: v || null })
   }
 
   async function handleFiles(files) {
@@ -131,6 +153,21 @@ export default function TaskModal({ task, onClose, onUpdate }) {
           </button>
         </div>
 
+        {/* Goal linker */}
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-sm text-dusk-500">🎯 Objectif</span>
+          <select
+            value={goalId}
+            onChange={(e) => onGoal(e.target.value)}
+            className="flex-1 text-sm bg-white/70 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-peach-300"
+          >
+            <option value="">— Aucun —</option>
+            {goals.map((g) => (
+              <option key={g.id} value={g.id}>{g.title}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Notes — rich text */}
         <RichEditor
           initialHtml={notes}
@@ -177,6 +214,7 @@ export default function TaskModal({ task, onClose, onUpdate }) {
                     <img
                       src={att.url}
                       alt=""
+                      loading="lazy"
                       onClick={() => setLightbox(att.url)}
                       className="w-full h-full object-cover cursor-zoom-in"
                     />
