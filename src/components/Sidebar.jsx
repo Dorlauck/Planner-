@@ -2,6 +2,7 @@ import { useAuth } from '../contexts/AuthContext'
 
 const NAV = [
   { id: 'today', label: 'Ma journée', icon: '☀️' },
+  { id: 'planning', label: 'Planning', icon: '📅' },
   { id: 'goals', label: 'Objectifs', icon: '🎯' },
   { id: 'habits', label: 'Habitudes', icon: '🔁' },
   { id: 'journal', label: 'Journal', icon: '📖' },

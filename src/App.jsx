@@ -3,6 +3,7 @@ import { useAuth } from './contexts/AuthContext'
 import AuthScreen from './components/AuthScreen'
 import Sidebar from './components/Sidebar'
 import Today from './pages/Today'
+import Planning from './pages/Planning'
 import Goals from './pages/Goals'
 import Habits from './pages/Habits'
 import Journal from './pages/Journal'
@@ -23,6 +24,7 @@ export default function App() {
 
   const pages = {
     today: <Today />,
+    planning: <Planning />,
     goals: <Goals />,
     habits: <Habits />,
     journal: <Journal />,
