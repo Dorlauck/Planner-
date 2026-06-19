@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import Spinner from '../components/Spinner'
+import TaskModal from '../components/TaskModal'
 import {
   toISODate,
   monthStart,
@@ -23,6 +24,7 @@ export default function Planning() {
   const [newTask, setNewTask] = useState('')
   const [draggingId, setDraggingId] = useState(null)
   const [overKey, setOverKey] = useState(null)
+  const [openTask, setOpenTask] = useState(null)
 
   const monthIso = toISODate(month)
   const weeks = weeksOfMonth(month)
@@ -119,9 +121,13 @@ export default function Planning() {
         >
           {task.completed && '✓'}
         </button>
-        <span className={`flex-1 text-xs leading-snug ${task.completed ? 'line-through text-dusk-400' : 'text-dusk-900'}`}>
+        <button
+          onClick={() => setOpenTask(task)}
+          className={`flex-1 text-left text-xs leading-snug hover:text-peach-600 ${task.completed ? 'line-through text-dusk-400' : 'text-dusk-900'}`}
+        >
           {task.title}
-        </span>
+          {task.notes?.trim() && <span className="ml-1 text-peach-400" title="Contient des notes">📝</span>}
+        </button>
         <button
           onClick={() => remove(task.id)}
           className="opacity-0 group-hover:opacity-100 text-dusk-300 hover:text-coral-500 text-xs shrink-0"
@@ -276,6 +282,17 @@ export default function Planning() {
             )
           })}
         </div>
+      )}
+
+      {openTask && (
+        <TaskModal
+          task={openTask}
+          onClose={() => setOpenTask(null)}
+          onUpdate={(patch) => {
+            setTasks((ts) => ts.map((t) => (t.id === openTask.id ? { ...t, ...patch } : t)))
+            setOpenTask((o) => (o ? { ...o, ...patch } : o))
+          }}
+        />
       )}
     </div>
   )
