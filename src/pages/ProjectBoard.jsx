@@ -17,6 +17,7 @@ import TaskNode from '../components/TaskNode'
 import TextNode from '../components/TextNode'
 import TaskDrawer from '../components/TaskDrawer'
 import DrawingLayer from '../components/DrawingLayer'
+import LegendPanel from '../components/LegendPanel'
 import BoardToolbar, { PEN_COLORS } from '../components/BoardToolbar'
 import { computeTaskStates, wouldCreateCycle } from '../lib/graph'
 
@@ -38,6 +39,7 @@ function Board({ project }) {
   const [deps, setDeps] = useState([])
   const [texts, setTexts] = useState([])
   const [strokes, setStrokes] = useState([])
+  const [legend, setLegend] = useState([])
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState(null)
 
@@ -57,7 +59,7 @@ function Board({ project }) {
 
   // Always-fresh snapshot of board state for use inside stable callbacks.
   const live = useRef({})
-  live.current = { tasks, texts, deps, strokes }
+  live.current = { tasks, texts, deps, strokes, legend }
 
   // ---- Undo stack -------------------------------------------------------
   // Each entry is an async function that reverts one action. DB re-inserts
@@ -102,13 +104,13 @@ function Board({ project }) {
     ;(async () => {
       const { data: t } = await supabase
         .from('tasks')
-        .select('id, title, notes, status, pos_x, pos_y, position')
+        .select('id, title, notes, status, color, pos_x, pos_y, position')
         .eq('project_id', project.id)
         .order('position')
       const taskList = t ?? []
       const ids = taskList.map((x) => x.id)
 
-      const [depsRes, textsRes, strokesRes] = await Promise.all([
+      const [depsRes, textsRes, strokesRes, legendRes] = await Promise.all([
         ids.length
           ? supabase.from('task_dependencies').select('id, task_id, depends_on_id').in('task_id', ids)
           : Promise.resolve({ data: [] }),
@@ -118,6 +120,11 @@ function Board({ project }) {
           .select('id, points, color, width')
           .eq('project_id', project.id)
           .order('created_at'),
+        supabase
+          .from('board_legend')
+          .select('id, color, label, position')
+          .eq('project_id', project.id)
+          .order('position'),
       ])
 
       if (!active) return
@@ -125,6 +132,7 @@ function Board({ project }) {
       setDeps(depsRes.data ?? [])
       setTexts(textsRes.data ?? [])
       setStrokes(strokesRes.data ?? [])
+      setLegend(legendRes.data ?? [])
       setLoading(false)
     })()
     return () => {
@@ -508,6 +516,28 @@ function Board({ project }) {
     })
   }
 
+  // ---- Legend (per-project colour meanings) -----------------------------
+  async function addLegend() {
+    const len = live.current.legend?.length ?? 0
+    const color = PEN_COLORS[len % PEN_COLORS.length]
+    const { data } = await supabase
+      .from('board_legend')
+      .insert({ user_id: user.id, project_id: project.id, color, label: '', position: len })
+      .select('id, color, label, position')
+      .single()
+    if (data) setLegend((l) => [...l, data])
+  }
+
+  async function updateLegend(id, patch) {
+    setLegend((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+    await supabase.from('board_legend').update(patch).eq('id', id)
+  }
+
+  async function removeLegend(id) {
+    setLegend((l) => l.filter((x) => x.id !== id))
+    await supabase.from('board_legend').delete().eq('id', id)
+  }
+
   const openTask = tasks.find((t) => t.id === openId) || null
   const isSelect = mode === 'select'
   const isDraw = mode === 'draw'
@@ -550,6 +580,13 @@ function Board({ project }) {
               canUndo={undoLen > 0}
               onClear={clearStrokes}
               hasDrawings={strokes.length > 0}
+            />
+
+            <LegendPanel
+              legend={legend}
+              onAdd={addLegend}
+              onUpdate={updateLegend}
+              onRemove={removeLegend}
             />
 
             {tasks.length === 0 && texts.length === 0 && strokes.length === 0 && (
@@ -598,7 +635,7 @@ function Board({ project }) {
               selectionKeyCode={null}
             >
               <Background color="#FCB682" gap={24} size={1.5} />
-              <Controls showInteractive={false} />
+              <Controls position="top-right" showInteractive={false} />
               <MiniMap pannable zoomable className="!bg-white/80 !rounded-xl" />
               <DrawingLayer
                 active={isDraw}
@@ -619,6 +656,7 @@ function Board({ project }) {
           task={openTask}
           tasks={tasks}
           deps={deps}
+          legend={legend}
           onClose={() => setOpenId(null)}
           onSave={(patch) => saveTask(openTask.id, patch)}
           onDelete={deleteTask}

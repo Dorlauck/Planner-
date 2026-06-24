@@ -42,10 +42,17 @@ export default function TaskNode({ data }) {
 
   return (
     <div
-      className={`w-60 rounded-2xl border-2 px-4 py-3 transition ${s.ring} ${
+      className={`relative w-60 rounded-2xl border-2 px-4 py-3 overflow-hidden transition ${s.ring} ${
         key === 'done' ? 'opacity-70' : ''
       }`}
     >
+      {task.color && (
+        <span
+          className="absolute left-0 top-0 h-full w-1.5"
+          style={{ backgroundColor: task.color }}
+        />
+      )}
+
       <Handle
         type="target"
         position={Position.Left}
