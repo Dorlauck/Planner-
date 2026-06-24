@@ -32,7 +32,7 @@ function fallbackPos(index) {
 
 function Board({ project }) {
   const { user } = useAuth()
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, getViewport, setViewport } = useReactFlow()
 
   const [tasks, setTasks] = useState([])
   const [deps, setDeps] = useState([])
@@ -445,6 +445,23 @@ function Board({ project }) {
     [screenToFlowPosition],
   )
 
+  // In draw mode the overlay captures the wheel; zoom the board (centred on the
+  // cursor) ourselves so the page never zooms.
+  const onWheelZoom = useCallback(
+    (e) => {
+      const rect = e.currentTarget.getBoundingClientRect()
+      const px = e.clientX - rect.left
+      const py = e.clientY - rect.top
+      const { x, y, zoom } = getViewport()
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12
+      const newZoom = Math.min(2, Math.max(0.2, zoom * factor))
+      const fx = (px - x) / zoom
+      const fy = (py - y) / zoom
+      setViewport({ x: px - fx * newZoom, y: py - fy * newZoom, zoom: newZoom })
+    },
+    [getViewport, setViewport],
+  )
+
   const onDrawUp = useCallback(async () => {
     if (!drawing.current) return
     drawing.current = false
@@ -573,11 +590,11 @@ function Board({ project }) {
               elementsSelectable={isSelect}
               selectionOnDrag={isSelect}
               panOnDrag={isDraw ? false : [1, 2]}
-              // In draw mode React Flow ignores the wheel entirely, so Ctrl+scroll
-              // zooms the browser page instead of the board.
+              // Non-draw: wheel pans, Ctrl+wheel zooms. Draw: the DrawingLayer
+              // captures the wheel and zooms the board itself (page never zooms).
               panOnScroll={!isDraw}
               zoomOnScroll={false}
-              zoomOnPinch={!isDraw}
+              zoomOnPinch
               selectionKeyCode={null}
             >
               <Background color="#FCB682" gap={24} size={1.5} />
@@ -590,6 +607,7 @@ function Board({ project }) {
                 onPointerDown={onDrawDown}
                 onPointerMove={onDrawMove}
                 onPointerUp={onDrawUp}
+                onWheelZoom={onWheelZoom}
               />
             </ReactFlow>
           </>
