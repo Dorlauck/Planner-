@@ -50,10 +50,55 @@ function Board({ project }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
+  // When a task node is deleted, React Flow also fires onEdgesDelete for its
+  // edges. We let the node-delete path own those (it snapshots them) and skip
+  // them in the edge handler to avoid a duplicate undo entry.
+  const removingTaskIds = useRef(new Set())
+
+  // Always-fresh snapshot of board state for use inside stable callbacks.
+  const live = useRef({})
+  live.current = { tasks, texts, deps, strokes }
+
+  // ---- Undo stack -------------------------------------------------------
+  // Each entry is an async function that reverts one action. DB re-inserts
+  // reuse the original ids so dependencies and references stay intact.
+  const undoStack = useRef([])
+  const [undoLen, setUndoLen] = useState(0)
+
+  const pushUndo = useCallback((run) => {
+    undoStack.current.push(run)
+    if (undoStack.current.length > 50) undoStack.current.shift()
+    setUndoLen(undoStack.current.length)
+  }, [])
+
+  const doUndo = useCallback(async () => {
+    const run = undoStack.current.pop()
+    setUndoLen(undoStack.current.length)
+    if (run) await run()
+  }, [])
+
+  // Ctrl/Cmd+Z anywhere, except while typing (native text undo wins there).
+  const doUndoRef = useRef(doUndo)
+  doUndoRef.current = doUndo
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        const el = document.activeElement
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+        e.preventDefault()
+        doUndoRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   // ---- Load everything for this project ---------------------------------
   useEffect(() => {
     let active = true
     setLoading(true)
+    undoStack.current = []
+    setUndoLen(0)
     ;(async () => {
       const { data: t } = await supabase
         .from('tasks')
@@ -92,19 +137,23 @@ function Board({ project }) {
   const commitText = useCallback(
     async (id, content) => {
       const trimmed = content.trim()
-      const existing = texts.find((t) => t.id === id)
+      const existing = live.current.texts.find((t) => t.id === id)
       if (!existing) return
       if (!trimmed) {
-        // Empty annotation → remove it.
         setTexts((arr) => arr.filter((t) => t.id !== id))
         await supabase.from('board_texts').delete().eq('id', id)
         return
       }
       if (trimmed === existing.content) return
+      const prev = existing.content
       setTexts((arr) => arr.map((t) => (t.id === id ? { ...t, content: trimmed } : t)))
       await supabase.from('board_texts').update({ content: trimmed }).eq('id', id)
+      pushUndo(async () => {
+        setTexts((arr) => arr.map((t) => (t.id === id ? { ...t, content: prev } : t)))
+        await supabase.from('board_texts').update({ content: prev }).eq('id', id)
+      })
     },
-    [texts],
+    [pushUndo],
   )
 
   // ---- Build React Flow nodes (tasks + free texts) ----------------------
@@ -147,7 +196,7 @@ function Board({ project }) {
 
   // ---- Tasks ------------------------------------------------------------
   async function addTask() {
-    const pos = fallbackPos(tasks.length)
+    const pos = fallbackPos(live.current.tasks.length)
     const { data } = await supabase
       .from('tasks')
       .insert({
@@ -155,7 +204,7 @@ function Board({ project }) {
         project_id: project.id,
         title: 'Nouvelle tâche',
         status: 'todo',
-        position: tasks.length,
+        position: live.current.tasks.length,
         pos_x: pos.x,
         pos_y: pos.y,
       })
@@ -164,60 +213,141 @@ function Board({ project }) {
     if (data) {
       setTasks((t) => [...t, data])
       setOpenId(data.id)
+      pushUndo(async () => {
+        setTasks((t) => t.filter((x) => x.id !== data.id))
+        setOpenId((o) => (o === data.id ? null : o))
+        await supabase.from('tasks').delete().eq('id', data.id)
+      })
     }
   }
 
   async function saveTask(id, patch) {
+    const prevTask = live.current.tasks.find((x) => x.id === id)
+    const prevPatch = prevTask
+      ? Object.fromEntries(Object.keys(patch).map((k) => [k, prevTask[k]]))
+      : null
     setTasks((t) => t.map((x) => (x.id === id ? { ...x, ...patch } : x)))
     await supabase.from('tasks').update(patch).eq('id', id)
+    if (prevPatch) {
+      pushUndo(async () => {
+        setTasks((t) => t.map((x) => (x.id === id ? { ...x, ...prevPatch } : x)))
+        await supabase.from('tasks').update(prevPatch).eq('id', id)
+      })
+    }
+  }
+
+  // Re-create one or more deleted tasks (+ their texts/deps) with original ids.
+  const restore = useCallback(async ({ tasksRows = [], depsRows = [], textsRows = [] }) => {
+    if (tasksRows.length) {
+      await supabase.from('tasks').insert(tasksRows)
+      setTasks((t) => [...t, ...tasksRows.map(({ user_id, project_id, ...r }) => r)])
+    }
+    if (depsRows.length) {
+      await supabase.from('task_dependencies').insert(depsRows)
+      setDeps((d) => [...d, ...depsRows.map(({ user_id, ...r }) => r)])
+    }
+    if (textsRows.length) {
+      await supabase.from('board_texts').insert(textsRows)
+      setTexts((arr) => [...arr, ...textsRows.map(({ user_id, project_id, ...r }) => r)])
+    }
+  }, [])
+
+  function snapshotTasks(ids) {
+    const tasksRows = live.current.tasks
+      .filter((t) => ids.includes(t.id))
+      .map((t) => ({ ...t, user_id: user.id, project_id: project.id }))
+    const depsRows = live.current.deps
+      .filter((d) => ids.includes(d.task_id) || ids.includes(d.depends_on_id))
+      .map((d) => ({ id: d.id, task_id: d.task_id, depends_on_id: d.depends_on_id, user_id: user.id }))
+    return { tasksRows, depsRows }
   }
 
   async function deleteTask(id) {
+    const snap = snapshotTasks([id])
     setTasks((t) => t.filter((x) => x.id !== id))
     setDeps((d) => d.filter((x) => x.task_id !== id && x.depends_on_id !== id))
     setOpenId(null)
     await supabase.from('tasks').delete().eq('id', id) // cascades deps + attachments
+    pushUndo(() => restore(snap))
   }
 
   async function removeDep(depId) {
+    const row = live.current.deps.find((d) => d.id === depId)
     setDeps((d) => d.filter((x) => x.id !== depId))
     await supabase.from('task_dependencies').delete().eq('id', depId)
+    if (row) {
+      pushUndo(async () => {
+        await supabase
+          .from('task_dependencies')
+          .insert({ id: row.id, task_id: row.task_id, depends_on_id: row.depends_on_id, user_id: user.id })
+        setDeps((d) => [...d, { id: row.id, task_id: row.task_id, depends_on_id: row.depends_on_id }])
+      })
+    }
   }
 
   // ---- React Flow events ------------------------------------------------
-  const onNodeDragStop = useCallback((_e, node, dragged) => {
-    const moved = dragged && dragged.length ? dragged : node ? [node] : []
-    for (const n of moved) {
-      const patch = { pos_x: n.position.x, pos_y: n.position.y }
-      if (n.type === 'text') {
-        setTexts((arr) => arr.map((t) => (t.id === n.id ? { ...t, ...patch } : t)))
-        supabase.from('board_texts').update(patch).eq('id', n.id)
-      } else {
-        supabase.from('tasks').update(patch).eq('id', n.id)
+  const onNodeDragStop = useCallback(
+    (_e, node, dragged) => {
+      const moved = dragged && dragged.length ? dragged : node ? [node] : []
+      const inverse = []
+      for (const n of moved) {
+        const arr = n.type === 'text' ? live.current.texts : live.current.tasks
+        const prev = arr.find((x) => x.id === n.id)
+        if (prev) inverse.push({ type: n.type, id: n.id, pos_x: prev.pos_x, pos_y: prev.pos_y })
+        const table = n.type === 'text' ? 'board_texts' : 'tasks'
+        const setter = n.type === 'text' ? setTexts : setTasks
+        const patch = { pos_x: n.position.x, pos_y: n.position.y }
+        setter((items) => items.map((x) => (x.id === n.id ? { ...x, ...patch } : x)))
+        supabase.from(table).update(patch).eq('id', n.id)
       }
-    }
-  }, [])
+      if (inverse.length) {
+        pushUndo(async () => {
+          for (const it of inverse) {
+            const table = it.type === 'text' ? 'board_texts' : 'tasks'
+            const setter = it.type === 'text' ? setTexts : setTasks
+            setter((items) => items.map((x) => (x.id === it.id ? { ...x, pos_x: it.pos_x, pos_y: it.pos_y } : x)))
+            await supabase.from(table).update({ pos_x: it.pos_x, pos_y: it.pos_y }).eq('id', it.id)
+          }
+        })
+      }
+    },
+    [pushUndo],
+  )
 
-  const onNodesDelete = useCallback((removed) => {
-    const taskIds = removed.filter((n) => n.type === 'task').map((n) => n.id)
-    const textIds = removed.filter((n) => n.type === 'text').map((n) => n.id)
-    if (taskIds.length) {
-      setTasks((t) => t.filter((x) => !taskIds.includes(x.id)))
-      setDeps((d) => d.filter((x) => !taskIds.includes(x.task_id) && !taskIds.includes(x.depends_on_id)))
-      supabase.from('tasks').delete().in('id', taskIds)
-    }
-    if (textIds.length) {
-      setTexts((arr) => arr.filter((x) => !textIds.includes(x.id)))
-      supabase.from('board_texts').delete().in('id', textIds)
-    }
-  }, [])
+  const onNodesDelete = useCallback(
+    (removed) => {
+      const taskIds = removed.filter((n) => n.type === 'task').map((n) => n.id)
+      const textIds = removed.filter((n) => n.type === 'text').map((n) => n.id)
+      removingTaskIds.current = new Set(taskIds)
+      setTimeout(() => (removingTaskIds.current = new Set()), 0)
+      const snap = snapshotTasks(taskIds)
+      const textsRows = live.current.texts
+        .filter((t) => textIds.includes(t.id))
+        .map((t) => ({ ...t, user_id: user.id, project_id: project.id }))
+
+      if (taskIds.length) {
+        setTasks((t) => t.filter((x) => !taskIds.includes(x.id)))
+        setDeps((d) => d.filter((x) => !taskIds.includes(x.task_id) && !taskIds.includes(x.depends_on_id)))
+        supabase.from('tasks').delete().in('id', taskIds)
+      }
+      if (textIds.length) {
+        setTexts((arr) => arr.filter((x) => !textIds.includes(x.id)))
+        supabase.from('board_texts').delete().in('id', textIds)
+      }
+      if (taskIds.length || textIds.length) {
+        pushUndo(() => restore({ ...snap, textsRows }))
+      }
+    },
+    [pushUndo, restore, user.id, project.id],
+  )
 
   const onConnect = useCallback(
     async (conn) => {
       const { source, target } = conn
       if (!source || !target) return
-      if (deps.some((d) => d.task_id === target && d.depends_on_id === source)) return
-      if (wouldCreateCycle(deps, source, target)) {
+      const d0 = live.current.deps
+      if (d0.some((d) => d.task_id === target && d.depends_on_id === source)) return
+      if (wouldCreateCycle(d0, source, target)) {
         alert('Impossible : cela créerait une boucle de dépendances.')
         return
       }
@@ -226,16 +356,40 @@ function Board({ project }) {
         .insert({ user_id: user.id, task_id: target, depends_on_id: source })
         .select('id, task_id, depends_on_id')
         .single()
-      if (data) setDeps((d) => [...d, data])
+      if (data) {
+        setDeps((d) => [...d, data])
+        pushUndo(async () => {
+          setDeps((d) => d.filter((x) => x.id !== data.id))
+          await supabase.from('task_dependencies').delete().eq('id', data.id)
+        })
+      }
     },
-    [deps, user.id],
+    [user.id, pushUndo],
   )
 
-  const onEdgesDelete = useCallback((removed) => {
-    const ids = removed.map((e) => e.id)
-    setDeps((d) => d.filter((x) => !ids.includes(x.id)))
-    supabase.from('task_dependencies').delete().in('id', ids)
-  }, [])
+  const onEdgesDelete = useCallback(
+    (removed) => {
+      // Edges removed as a side effect of deleting their task are handled by the
+      // node-delete path; skip them here.
+      const edgesOnly = removed.filter(
+        (e) => !removingTaskIds.current.has(e.source) && !removingTaskIds.current.has(e.target),
+      )
+      const ids = edgesOnly.map((e) => e.id)
+      if (!ids.length) return
+      const rows = live.current.deps
+        .filter((d) => ids.includes(d.id))
+        .map((d) => ({ id: d.id, task_id: d.task_id, depends_on_id: d.depends_on_id, user_id: user.id }))
+      setDeps((d) => d.filter((x) => !ids.includes(x.id)))
+      supabase.from('task_dependencies').delete().in('id', ids)
+      if (rows.length) {
+        pushUndo(async () => {
+          await supabase.from('task_dependencies').insert(rows)
+          setDeps((d) => [...d, ...rows.map(({ user_id, ...r }) => r)])
+        })
+      }
+    },
+    [user.id, pushUndo],
+  )
 
   const onNodeClick = useCallback((_e, node) => {
     if (node.type === 'task') setOpenId(node.id)
@@ -254,9 +408,13 @@ function Board({ project }) {
       if (data) {
         newTextId.current = data.id
         setTexts((arr) => [...arr, data])
+        pushUndo(async () => {
+          setTexts((arr) => arr.filter((t) => t.id !== data.id))
+          await supabase.from('board_texts').delete().eq('id', data.id)
+        })
       }
     },
-    [mode, project.id, user.id, screenToFlowPosition],
+    [mode, project.id, user.id, screenToFlowPosition, pushUndo],
   )
 
   // ---- Drawing ----------------------------------------------------------
@@ -280,7 +438,7 @@ function Board({ project }) {
         const last = c.points[c.points.length - 1]
         const dx = p.x - last.x
         const dy = p.y - last.y
-        if (dx * dx + dy * dy < 2) return c // skip near-duplicate points
+        if (dx * dx + dy * dy < 2) return c
         return { ...c, points: [...c.points, p] }
       })
     },
@@ -304,25 +462,38 @@ function Board({ project }) {
       })
       .select('id, points, color, width')
       .single()
-    if (data) setStrokes((s) => [...s, data])
-  }, [current, project.id, user.id])
-
-  async function undoStroke() {
-    const last = strokes[strokes.length - 1]
-    if (!last) return
-    setStrokes((s) => s.slice(0, -1))
-    await supabase.from('board_strokes').delete().eq('id', last.id)
-  }
+    if (data) {
+      setStrokes((s) => [...s, data])
+      pushUndo(async () => {
+        setStrokes((s) => s.filter((x) => x.id !== data.id))
+        await supabase.from('board_strokes').delete().eq('id', data.id)
+      })
+    }
+  }, [current, project.id, user.id, pushUndo])
 
   async function clearStrokes() {
-    if (!strokes.length) return
+    const all = live.current.strokes
+    if (!all.length) return
     if (!confirm('Effacer tous les dessins de ce projet ?')) return
+    const rows = all.map((s) => ({
+      id: s.id,
+      points: s.points,
+      color: s.color,
+      width: s.width,
+      user_id: user.id,
+      project_id: project.id,
+    }))
     setStrokes([])
     await supabase.from('board_strokes').delete().eq('project_id', project.id)
+    pushUndo(async () => {
+      await supabase.from('board_strokes').insert(rows)
+      setStrokes(rows.map(({ user_id, project_id, ...r }) => r))
+    })
   }
 
   const openTask = tasks.find((t) => t.id === openId) || null
   const isSelect = mode === 'select'
+  const isDraw = mode === 'draw'
 
   return (
     <div className="h-screen flex flex-col">
@@ -358,9 +529,9 @@ function Board({ project }) {
               setMode={setMode}
               penColor={penColor}
               setPenColor={setPenColor}
-              onUndo={undoStroke}
+              onUndo={doUndo}
+              canUndo={undoLen > 0}
               onClear={clearStrokes}
-              canUndo={strokes.length > 0}
               hasDrawings={strokes.length > 0}
             />
 
@@ -397,21 +568,23 @@ function Board({ project }) {
               defaultEdgeOptions={{ style: { stroke: '#FCB682', strokeWidth: 2 } }}
               deleteKeyCode={['Delete']}
               // --- interaction: desktop / Figma-style ---
-              nodesDraggable={mode !== 'draw'}
+              nodesDraggable={!isDraw}
               nodesConnectable={isSelect}
               elementsSelectable={isSelect}
               selectionOnDrag={isSelect}
-              panOnDrag={mode === 'draw' ? false : [1, 2]}
-              panOnScroll
+              panOnDrag={isDraw ? false : [1, 2]}
+              // In draw mode React Flow ignores the wheel entirely, so Ctrl+scroll
+              // zooms the browser page instead of the board.
+              panOnScroll={!isDraw}
               zoomOnScroll={false}
-              zoomOnPinch
+              zoomOnPinch={!isDraw}
               selectionKeyCode={null}
             >
               <Background color="#FCB682" gap={24} size={1.5} />
               <Controls showInteractive={false} />
               <MiniMap pannable zoomable className="!bg-white/80 !rounded-xl" />
               <DrawingLayer
-                active={mode === 'draw'}
+                active={isDraw}
                 strokes={strokes}
                 current={current}
                 onPointerDown={onDrawDown}

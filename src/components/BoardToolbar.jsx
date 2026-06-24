@@ -6,23 +6,37 @@ const MODES = [
   { id: 'draw', icon: '✏️', label: 'Dessin libre' },
 ]
 
-// Floating toolbar: pick an interaction mode and, when drawing, a pen colour.
-export default function BoardToolbar({ mode, setMode, penColor, setPenColor, onUndo, onClear, canUndo, hasDrawings }) {
+// Floating toolbar: interaction mode, a global undo, and (when drawing) the pen
+// controls.
+export default function BoardToolbar({ mode, setMode, penColor, setPenColor, onUndo, canUndo, onClear, hasDrawings }) {
   return (
     <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 items-start">
-      <div className="flex gap-1 p-1 bg-white/90 backdrop-blur rounded-xl shadow-card">
-        {MODES.map((m) => (
+      <div className="flex gap-2 items-center">
+        <div className="flex gap-1 p-1 bg-white/90 backdrop-blur rounded-xl shadow-card">
+          {MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setMode(m.id)}
+              title={m.label}
+              className={`w-9 h-9 rounded-lg text-sm font-semibold flex items-center justify-center transition ${
+                mode === m.id ? 'bg-sunrise-warm text-white shadow-soft' : 'text-dusk-500 hover:bg-peach-50'
+              }`}
+            >
+              {m.icon}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex p-1 bg-white/90 backdrop-blur rounded-xl shadow-card">
           <button
-            key={m.id}
-            onClick={() => setMode(m.id)}
-            title={m.label}
-            className={`w-9 h-9 rounded-lg text-sm font-semibold flex items-center justify-center transition ${
-              mode === m.id ? 'bg-sunrise-warm text-white shadow-soft' : 'text-dusk-500 hover:bg-peach-50'
-            }`}
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="Annuler la dernière action (Ctrl+Z)"
+            className="w-9 h-9 rounded-lg text-base flex items-center justify-center text-dusk-500 hover:bg-peach-50 disabled:opacity-30 transition"
           >
-            {m.icon}
+            ↶
           </button>
-        ))}
+        </div>
       </div>
 
       {mode === 'draw' && (
@@ -40,13 +54,6 @@ export default function BoardToolbar({ mode, setMode, penColor, setPenColor, onU
             ))}
           </div>
           <span className="w-px h-5 bg-peach-100" />
-          <button
-            onClick={onUndo}
-            disabled={!canUndo}
-            className="px-2 py-1 rounded-lg text-xs text-dusk-500 hover:bg-peach-50 disabled:opacity-30"
-          >
-            Annuler
-          </button>
           <button
             onClick={onClear}
             disabled={!hasDrawings}
