@@ -55,6 +55,22 @@ function Board({ project, legend }) {
   // them in the edge handler to avoid a duplicate undo entry.
   const removingTaskIds = useRef(new Set())
 
+  // Track the Alt key so a drag can duplicate (Illustrator-style) on release.
+  const altDown = useRef(false)
+  useEffect(() => {
+    const down = (e) => e.key === 'Alt' && (altDown.current = true)
+    const up = (e) => e.key === 'Alt' && (altDown.current = false)
+    const blur = () => (altDown.current = false)
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    window.addEventListener('blur', blur)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+      window.removeEventListener('blur', blur)
+    }
+  }, [])
+
   // Always-fresh snapshot of board state for use inside stable callbacks.
   const live = useRef({})
   live.current = { tasks, texts, deps, strokes }
@@ -287,8 +303,83 @@ function Board({ project, legend }) {
 
   // ---- React Flow events ------------------------------------------------
   const onNodeDragStop = useCallback(
-    (_e, node, dragged) => {
+    (e, node, dragged) => {
       const moved = dragged && dragged.length ? dragged : node ? [node] : []
+      if (!moved.length) return
+
+      // Alt+drag → duplicate: original stays put (state position unchanged, so
+      // the rebuild snaps it back), a copy is created where the drag was released.
+      const alt = (e && e.altKey) || altDown.current
+      if (alt) {
+        ;(async () => {
+          const taskCopies = []
+          const textCopies = []
+          moved.forEach((n, i) => {
+            if (n.type === 'text') {
+              const src = live.current.texts.find((x) => x.id === n.id)
+              if (src)
+                textCopies.push({
+                  user_id: user.id,
+                  project_id: project.id,
+                  content: src.content,
+                  pos_x: n.position.x,
+                  pos_y: n.position.y,
+                })
+            } else {
+              const src = live.current.tasks.find((x) => x.id === n.id)
+              if (src)
+                taskCopies.push({
+                  user_id: user.id,
+                  project_id: project.id,
+                  title: src.title,
+                  notes: src.notes,
+                  status: src.status,
+                  color: src.color,
+                  position: live.current.tasks.length + i,
+                  pos_x: n.position.x,
+                  pos_y: n.position.y,
+                })
+            }
+          })
+
+          const undoIds = { tasks: [], texts: [] }
+          if (taskCopies.length) {
+            const { data } = await supabase
+              .from('tasks')
+              .insert(taskCopies)
+              .select('id, title, notes, status, color, pos_x, pos_y, position')
+            if (data) {
+              setTasks((t) => [...t, ...data])
+              undoIds.tasks = data.map((d) => d.id)
+            }
+          }
+          if (textCopies.length) {
+            const { data } = await supabase
+              .from('board_texts')
+              .insert(textCopies)
+              .select('id, content, pos_x, pos_y')
+            if (data) {
+              setTexts((a) => [...a, ...data])
+              undoIds.texts = data.map((d) => d.id)
+            }
+          }
+          if (undoIds.tasks.length || undoIds.texts.length) {
+            pushUndo(async () => {
+              if (undoIds.tasks.length) {
+                setTasks((t) => t.filter((x) => !undoIds.tasks.includes(x.id)))
+                await supabase.from('tasks').delete().in('id', undoIds.tasks)
+              }
+              if (undoIds.texts.length) {
+                setTexts((a) => a.filter((x) => !undoIds.texts.includes(x.id)))
+                await supabase.from('board_texts').delete().in('id', undoIds.texts)
+              }
+            })
+          }
+        })()
+        return
+      }
+
+      // Normal move → persist new positions (with undo to restore previous).
       const inverse = []
       for (const n of moved) {
         const arr = n.type === 'text' ? live.current.texts : live.current.tasks
@@ -311,7 +402,7 @@ function Board({ project, legend }) {
         })
       }
     },
-    [pushUndo],
+    [pushUndo, user.id, project.id],
   )
 
   const onNodesDelete = useCallback(
