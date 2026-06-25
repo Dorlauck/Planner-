@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { TASK_COLORS } from '../lib/palette'
 
 const STATUSES = [
   { id: 'todo', label: 'À faire' },
@@ -8,7 +9,7 @@ const STATUSES = [
 
 // Side panel to edit a single task. Saving is handled by the parent through
 // the `onSave` callback so the board stays the single source of truth.
-export default function TaskDrawer({ task, tasks, deps, legend = [], onClose, onSave, onDelete, onRemoveDep }) {
+export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, onSave, onDelete, onRemoveDep }) {
   const [title, setTitle] = useState(task.title)
   const [notes, setNotes] = useState(task.notes ?? '')
 
@@ -83,34 +84,28 @@ export default function TaskDrawer({ task, tasks, deps, legend = [], onClose, on
           {/* Colour / category */}
           <div>
             <p className="text-xs font-medium text-dusk-500 mb-2">Couleur</p>
-            {legend.length === 0 ? (
-              <p className="text-sm text-dusk-400">
-                Définis des couleurs dans la légende (en bas à gauche du board) pour pouvoir les assigner.
-              </p>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                {legend.map((l) => (
-                  <button
-                    key={l.id}
-                    onClick={() => onSave({ color: l.color })}
-                    title={l.label || 'Sans nom'}
-                    className={`w-7 h-7 rounded-full transition ${
-                      task.color === l.color ? 'ring-2 ring-offset-2 ring-dusk-400' : ''
-                    }`}
-                    style={{ backgroundColor: l.color }}
-                  />
-                ))}
+            <div className="flex flex-wrap items-center gap-2">
+              {TASK_COLORS.map((c) => (
                 <button
-                  onClick={() => onSave({ color: null })}
-                  title="Aucune couleur"
-                  className={`w-7 h-7 rounded-full border-2 border-dashed border-dusk-300 text-dusk-300 text-xs flex items-center justify-center ${
-                    !task.color ? 'ring-2 ring-offset-2 ring-dusk-400' : ''
+                  key={c}
+                  onClick={() => onSave({ color: c })}
+                  title={legend[c] || 'Sans signification'}
+                  className={`w-7 h-7 rounded-full border border-black/5 transition ${
+                    task.color === c ? 'ring-2 ring-offset-2 ring-dusk-400' : ''
                   }`}
-                >
-                  ∅
-                </button>
-              </div>
-            )}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+              <button
+                onClick={() => onSave({ color: null })}
+                title="Aucune couleur"
+                className={`w-7 h-7 rounded-full border-2 border-dashed border-dusk-300 text-dusk-300 text-xs flex items-center justify-center ${
+                  !task.color ? 'ring-2 ring-offset-2 ring-dusk-400' : ''
+                }`}
+              >
+                ∅
+              </button>
+            </div>
           </div>
 
           {/* Notes */}

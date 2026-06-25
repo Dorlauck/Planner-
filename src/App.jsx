@@ -13,6 +13,9 @@ export default function App() {
   const [currentId, setCurrentId] = useState(null)
   const [ready, setReady] = useState(false)
 
+  // Legend (per project): a map of colour hex → meaning.
+  const [legendRows, setLegendRows] = useState([])
+
   useEffect(() => {
     if (!session) return
     supabase
@@ -26,6 +29,36 @@ export default function App() {
         setReady(true)
       })
   }, [session])
+
+  // Load the legend whenever the current project changes.
+  useEffect(() => {
+    if (!currentId) {
+      setLegendRows([])
+      return
+    }
+    supabase
+      .from('board_legend')
+      .select('id, color, label')
+      .eq('project_id', currentId)
+      .then(({ data }) => setLegendRows(data ?? []))
+  }, [currentId])
+
+  const legend = Object.fromEntries(legendRows.map((r) => [r.color, r.label]))
+
+  async function setLegendLabel(color, label) {
+    const existing = legendRows.find((r) => r.color === color)
+    if (existing) {
+      setLegendRows((rows) => rows.map((r) => (r.color === color ? { ...r, label } : r)))
+      await supabase.from('board_legend').update({ label }).eq('id', existing.id)
+    } else {
+      const { data } = await supabase
+        .from('board_legend')
+        .insert({ user_id: user.id, project_id: currentId, color, label })
+        .select('id, color, label')
+        .single()
+      if (data) setLegendRows((rows) => [...rows, data])
+    }
+  }
 
   async function createProject(name) {
     const { data } = await supabase
@@ -74,10 +107,13 @@ export default function App() {
         onSelect={setCurrentId}
         onCreate={createProject}
         onDelete={deleteProject}
+        hasProject={!!currentProject}
+        legend={legend}
+        onLegendChange={setLegendLabel}
       />
       <main className="flex-1 min-w-0 overflow-hidden">
         {currentProject ? (
-          <ProjectBoard key={currentProject.id} project={currentProject} />
+          <ProjectBoard key={currentProject.id} project={currentProject} legend={legend} />
         ) : (
           <div className="h-full min-h-[70vh] flex flex-col items-center justify-center text-center px-6">
             <span className="text-5xl mb-4">🗺️</span>
