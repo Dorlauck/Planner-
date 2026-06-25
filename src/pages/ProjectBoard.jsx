@@ -184,7 +184,7 @@ function Board({ project, legend }) {
         source: d.depends_on_id,
         target: d.task_id,
         animated: states.get(d.task_id)?.blocked ?? false,
-        style: { stroke: '#FCB682', strokeWidth: 2 },
+        style: { stroke: '#CFC8D6', strokeWidth: 1.5 },
       })),
     )
   }, [deps, states, setEdges])
@@ -582,7 +582,7 @@ function Board({ project, legend }) {
               fitView
               minZoom={0.2}
               proOptions={{ hideAttribution: true }}
-              defaultEdgeOptions={{ style: { stroke: '#FCB682', strokeWidth: 2 } }}
+              defaultEdgeOptions={{ style: { stroke: '#CFC8D6', strokeWidth: 1.5 } }}
               deleteKeyCode={['Delete']}
               // --- interaction: desktop / Figma-style ---
               nodesDraggable={!isDraw}
@@ -597,7 +597,7 @@ function Board({ project, legend }) {
               zoomOnPinch
               selectionKeyCode={null}
             >
-              <Background color="#FCB682" gap={24} size={1.5} />
+              <Background color="#E5DCCF" gap={22} size={1} />
               <Controls showInteractive={false} />
               <MiniMap pannable zoomable className="!bg-white/80 !rounded-xl" />
               <DrawingLayer
