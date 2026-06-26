@@ -328,7 +328,7 @@ function Board({ project, legend }) {
 
       // Alt+drag → duplicate: original stays put (state position unchanged, so
       // the rebuild snaps it back), a copy is created where the drag was released.
-      const alt = altDrag.current || !!(e && e.altKey)
+      const alt = altDrag.current
       altDrag.current = false
       if (alt) {
         ;(async () => {
@@ -399,22 +399,21 @@ function Board({ project, legend }) {
         return
       }
 
-      // Normal move → compare every node against its stored position and persist
-      // whatever changed. Robust to multi-drag and to React Flow only handing
-      // back a subset of the moved nodes.
-      const changed = []
+      // Normal move → persist the final positions straight from the event
+      // (reliable), plus any other selected node for multi-drag safety.
+      const map = new Map()
+      for (const n of moved) map.set(n.id, { type: n.type, x: n.position.x, y: n.position.y })
       for (const n of nodesRef.current) {
-        const arr = n.type === 'text' ? live.current.texts : live.current.tasks
-        const prev = arr.find((x) => x.id === n.id)
+        if (n.selected && !map.has(n.id)) map.set(n.id, { type: n.type, x: n.position.x, y: n.position.y })
+      }
+
+      const changed = []
+      for (const [id, p] of map) {
+        const arr = p.type === 'text' ? live.current.texts : live.current.tasks
+        const prev = arr.find((x) => x.id === id)
         if (!prev) continue
-        if (prev.pos_x !== n.position.x || prev.pos_y !== n.position.y) {
-          changed.push({
-            type: n.type,
-            id: n.id,
-            from: { x: prev.pos_x, y: prev.pos_y },
-            to: { x: n.position.x, y: n.position.y },
-          })
-        }
+        if (prev.pos_x === p.x && prev.pos_y === p.y) continue
+        changed.push({ type: p.type, id, from: { x: prev.pos_x, y: prev.pos_y }, to: { x: p.x, y: p.y } })
       }
       if (!changed.length) return
 
