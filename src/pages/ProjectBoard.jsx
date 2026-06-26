@@ -421,7 +421,12 @@ function Board({ project, legend }) {
         const table = c.type === 'text' ? 'board_texts' : 'tasks'
         const setter = c.type === 'text' ? setTexts : setTasks
         setter((items) => items.map((x) => (x.id === c.id ? { ...x, pos_x: c.to.x, pos_y: c.to.y } : x)))
-        supabase.from(table).update({ pos_x: c.to.x, pos_y: c.to.y }).eq('id', c.id)
+        // .then() is required: a supabase query is only sent when awaited/then'd.
+        supabase
+          .from(table)
+          .update({ pos_x: c.to.x, pos_y: c.to.y })
+          .eq('id', c.id)
+          .then(({ error }) => error && console.error('Position non sauvegardée', error))
       }
       pushUndo(async () => {
         for (const c of changed) {
@@ -449,11 +454,11 @@ function Board({ project, legend }) {
       if (taskIds.length) {
         setTasks((t) => t.filter((x) => !taskIds.includes(x.id)))
         setDeps((d) => d.filter((x) => !taskIds.includes(x.task_id) && !taskIds.includes(x.depends_on_id)))
-        supabase.from('tasks').delete().in('id', taskIds)
+        supabase.from('tasks').delete().in('id', taskIds).then(({ error }) => error && console.error(error))
       }
       if (textIds.length) {
         setTexts((arr) => arr.filter((x) => !textIds.includes(x.id)))
-        supabase.from('board_texts').delete().in('id', textIds)
+        supabase.from('board_texts').delete().in('id', textIds).then(({ error }) => error && console.error(error))
       }
       if (taskIds.length || textIds.length) {
         pushUndo(() => restore({ ...snap, textsRows }))
@@ -501,7 +506,7 @@ function Board({ project, legend }) {
         .filter((d) => ids.includes(d.id))
         .map((d) => ({ id: d.id, task_id: d.task_id, depends_on_id: d.depends_on_id, user_id: user.id }))
       setDeps((d) => d.filter((x) => !ids.includes(x.id)))
-      supabase.from('task_dependencies').delete().in('id', ids)
+      supabase.from('task_dependencies').delete().in('id', ids).then(({ error }) => error && console.error(error))
       if (rows.length) {
         pushUndo(async () => {
           await supabase.from('task_dependencies').insert(rows)
