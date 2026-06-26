@@ -26,3 +26,36 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 .animate-fade-up { animation: fade-up 0.3s ease-out both; }
+
+/* Node pops in when it first appears on the board */
+@keyframes node-in {
+  from { opacity: 0; transform: scale(0.94) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-node-in { animation: node-in 0.26s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
+/* Drawer slides in from the right */
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in-right { animation: slide-in-right 0.3s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
+/* Backdrop fade */
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-overlay-in { animation: overlay-in 0.22s ease-out both; }
+
+/* Gentle floating used for accents */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+.animate-pulse-soft { animation: pulse-soft 2.4s ease-in-out infinite; }
+
+/* Respect users who prefer no motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}

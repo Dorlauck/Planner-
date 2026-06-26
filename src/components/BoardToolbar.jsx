@@ -18,8 +18,8 @@ export default function BoardToolbar({ mode, setMode, penColor, setPenColor, onU
               key={m.id}
               onClick={() => setMode(m.id)}
               title={m.label}
-              className={`w-9 h-9 rounded-lg text-sm font-semibold flex items-center justify-center transition ${
-                mode === m.id ? 'bg-sunrise-warm text-white shadow-soft' : 'text-dusk-500 hover:bg-peach-50'
+              className={`w-9 h-9 rounded-lg text-sm font-semibold flex items-center justify-center transition active:scale-90 ${
+                mode === m.id ? 'bg-sunrise-warm text-white shadow-soft scale-105' : 'text-dusk-500 hover:bg-peach-50'
               }`}
             >
               {m.icon}

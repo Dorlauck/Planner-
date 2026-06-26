@@ -63,7 +63,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`flex md:flex-col w-full shrink-0 bg-white/70 backdrop-blur border-b md:border-b-0 md:border-r border-peach-100 md:h-screen md:sticky md:top-0 p-4 md:p-5 ${
+      className={`flex md:flex-col w-full shrink-0 bg-white/70 backdrop-blur border-b md:border-b-0 md:border-r border-peach-100 md:h-screen md:sticky md:top-0 p-4 md:p-5 transition-[width] duration-300 ease-out ${
         collapsed ? 'md:w-16' : 'md:w-72'
       }`}
     >

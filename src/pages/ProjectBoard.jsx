@@ -50,26 +50,19 @@ function Board({ project, legend }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
+  // Latest RF nodes, so drag-stop can persist *every* moved node (not only what
+  // React Flow hands back), which fixes positions reverting after a multi-drag.
+  const nodesRef = useRef([])
+  nodesRef.current = nodes
+
   // When a task node is deleted, React Flow also fires onEdgesDelete for its
   // edges. We let the node-delete path own those (it snapshots them) and skip
   // them in the edge handler to avoid a duplicate undo entry.
   const removingTaskIds = useRef(new Set())
 
-  // Track the Alt key so a drag can duplicate (Illustrator-style) on release.
-  const altDown = useRef(false)
-  useEffect(() => {
-    const down = (e) => e.key === 'Alt' && (altDown.current = true)
-    const up = (e) => e.key === 'Alt' && (altDown.current = false)
-    const blur = () => (altDown.current = false)
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    window.addEventListener('blur', blur)
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-      window.removeEventListener('blur', blur)
-    }
-  }, [])
+  // Whether the in-progress drag started with Alt held (Illustrator-style
+  // duplicate). Read from the drag-start event, so it can never get "stuck".
+  const altDrag = useRef(false)
 
   // Always-fresh snapshot of board state for use inside stable callbacks.
   const live = useRef({})
@@ -302,6 +295,10 @@ function Board({ project, legend }) {
   }
 
   // ---- React Flow events ------------------------------------------------
+  const onNodeDragStart = useCallback((e) => {
+    altDrag.current = !!(e && e.altKey)
+  }, [])
+
   const onNodeDragStop = useCallback(
     (e, node, dragged) => {
       const moved = dragged && dragged.length ? dragged : node ? [node] : []
@@ -309,7 +306,8 @@ function Board({ project, legend }) {
 
       // Alt+drag → duplicate: original stays put (state position unchanged, so
       // the rebuild snaps it back), a copy is created where the drag was released.
-      const alt = (e && e.altKey) || altDown.current
+      const alt = altDrag.current || !!(e && e.altKey)
+      altDrag.current = false
       if (alt) {
         ;(async () => {
           const taskCopies = []
@@ -379,28 +377,39 @@ function Board({ project, legend }) {
         return
       }
 
-      // Normal move → persist new positions (with undo to restore previous).
-      const inverse = []
-      for (const n of moved) {
+      // Normal move → compare every node against its stored position and persist
+      // whatever changed. Robust to multi-drag and to React Flow only handing
+      // back a subset of the moved nodes.
+      const changed = []
+      for (const n of nodesRef.current) {
         const arr = n.type === 'text' ? live.current.texts : live.current.tasks
         const prev = arr.find((x) => x.id === n.id)
-        if (prev) inverse.push({ type: n.type, id: n.id, pos_x: prev.pos_x, pos_y: prev.pos_y })
-        const table = n.type === 'text' ? 'board_texts' : 'tasks'
-        const setter = n.type === 'text' ? setTexts : setTasks
-        const patch = { pos_x: n.position.x, pos_y: n.position.y }
-        setter((items) => items.map((x) => (x.id === n.id ? { ...x, ...patch } : x)))
-        supabase.from(table).update(patch).eq('id', n.id)
+        if (!prev) continue
+        if (prev.pos_x !== n.position.x || prev.pos_y !== n.position.y) {
+          changed.push({
+            type: n.type,
+            id: n.id,
+            from: { x: prev.pos_x, y: prev.pos_y },
+            to: { x: n.position.x, y: n.position.y },
+          })
+        }
       }
-      if (inverse.length) {
-        pushUndo(async () => {
-          for (const it of inverse) {
-            const table = it.type === 'text' ? 'board_texts' : 'tasks'
-            const setter = it.type === 'text' ? setTexts : setTasks
-            setter((items) => items.map((x) => (x.id === it.id ? { ...x, pos_x: it.pos_x, pos_y: it.pos_y } : x)))
-            await supabase.from(table).update({ pos_x: it.pos_x, pos_y: it.pos_y }).eq('id', it.id)
-          }
-        })
+      if (!changed.length) return
+
+      for (const c of changed) {
+        const table = c.type === 'text' ? 'board_texts' : 'tasks'
+        const setter = c.type === 'text' ? setTexts : setTasks
+        setter((items) => items.map((x) => (x.id === c.id ? { ...x, pos_x: c.to.x, pos_y: c.to.y } : x)))
+        supabase.from(table).update({ pos_x: c.to.x, pos_y: c.to.y }).eq('id', c.id)
       }
+      pushUndo(async () => {
+        for (const c of changed) {
+          const table = c.type === 'text' ? 'board_texts' : 'tasks'
+          const setter = c.type === 'text' ? setTexts : setTasks
+          setter((items) => items.map((x) => (x.id === c.id ? { ...x, pos_x: c.from.x, pos_y: c.from.y } : x)))
+          await supabase.from(table).update({ pos_x: c.from.x, pos_y: c.from.y }).eq('id', c.id)
+        }
+      })
     },
     [pushUndo, user.id, project.id],
   )
@@ -620,7 +629,7 @@ function Board({ project, legend }) {
         </div>
         <button
           onClick={addTask}
-          className="shrink-0 px-4 py-2 rounded-full bg-sunrise-warm text-white text-sm font-medium shadow-soft hover:opacity-95"
+          className="shrink-0 px-4 py-2 rounded-full bg-sunrise-warm text-white text-sm font-medium shadow-soft hover:opacity-95 hover:shadow-card active:scale-95 transition"
         >
           + Tâche
         </button>
@@ -666,11 +675,13 @@ function Board({ project, legend }) {
               onConnect={onConnect}
               onEdgesDelete={onEdgesDelete}
               onNodesDelete={onNodesDelete}
+              onNodeDragStart={onNodeDragStart}
               onNodeDragStop={onNodeDragStop}
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}
               nodeTypes={nodeTypes}
               fitView
+              fitViewOptions={{ duration: 500, padding: 0.2 }}
               minZoom={0.2}
               proOptions={{ hideAttribution: true }}
               defaultEdgeOptions={{ style: { stroke: '#CFC8D6', strokeWidth: 1.5 } }}

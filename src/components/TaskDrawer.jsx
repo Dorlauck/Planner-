@@ -37,8 +37,8 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
 
   return (
     <>
-      <div className="fixed inset-0 bg-dusk-900/10 z-30" onClick={onClose} />
-      <aside className="fixed top-0 right-0 z-40 h-full w-full max-w-md bg-cream shadow-soft border-l border-peach-100 flex flex-col animate-fade-up">
+      <div className="fixed inset-0 bg-dusk-900/10 z-30 animate-overlay-in" onClick={onClose} />
+      <aside className="fixed top-0 right-0 z-40 h-full w-full max-w-md bg-cream shadow-soft border-l border-peach-100 flex flex-col animate-slide-in-right">
         <div className="flex items-center justify-between px-6 py-4 border-b border-peach-100">
           <span className="text-xs font-medium uppercase tracking-wide text-peach-500">Tâche</span>
           <button

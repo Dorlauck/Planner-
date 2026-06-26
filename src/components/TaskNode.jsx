@@ -29,7 +29,7 @@ export default function TaskNode({ data, selected }) {
 
   return (
     <div
-      className={`relative w-60 rounded-xl border px-3.5 py-2.5 shadow-sm transition ${
+      className={`animate-node-in relative w-60 rounded-xl border px-3.5 py-2.5 shadow-sm transition-[background-color,border-color,color,box-shadow,transform] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md ${
         done ? 'opacity-60' : ''
       } ${selected ? 'ring-2 ring-dusk-300' : ''}`}
       style={{ background: t.bg, borderColor: t.border, color: t.text }}
@@ -42,7 +42,10 @@ export default function TaskNode({ data, selected }) {
 
       <div className="flex items-center justify-between mb-1">
         <span className="inline-flex items-center gap-1.5 text-[11px] font-medium" style={{ color: t.muted }}>
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.dot }} />
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${statusKey === 'ready' ? 'animate-pulse-soft' : ''}`}
+            style={{ background: st.dot }}
+          />
           {st.label}
           {statusKey === 'blocked' && state.remaining.length > 0 && <span>· {state.remaining.length}</span>}
         </span>
