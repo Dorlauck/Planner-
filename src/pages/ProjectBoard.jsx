@@ -17,7 +17,7 @@ import TaskNode from '../components/TaskNode'
 import TextNode from '../components/TextNode'
 import TaskDrawer from '../components/TaskDrawer'
 import DrawingLayer from '../components/DrawingLayer'
-import PlanningPanel from '../components/PlanningPanel'
+import PlanningView from '../components/PlanningView'
 import BoardToolbar, { PEN_COLORS } from '../components/BoardToolbar'
 import { computeTaskStates, wouldCreateCycle } from '../lib/graph'
 
@@ -33,7 +33,7 @@ function fallbackPos(index) {
 
 function Board({ project, legend }) {
   const { user } = useAuth()
-  const { screenToFlowPosition, getViewport, setViewport, setCenter } = useReactFlow()
+  const { screenToFlowPosition, getViewport, setViewport } = useReactFlow()
 
   const [tasks, setTasks] = useState([])
   const [deps, setDeps] = useState([])
@@ -56,6 +56,26 @@ function Board({ project, legend }) {
   // React Flow hands back), which fixes positions reverting after a multi-drag.
   const nodesRef = useRef([])
   nodesRef.current = nodes
+
+  // Remember the viewport (pan + zoom) per project so reopening it doesn't
+  // re-frame everything (which feels like the tasks "moved").
+  const savedViewport = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`vp:${project.id}`) || 'null')
+    } catch {
+      return null
+    }
+  }, [project.id])
+  const saveViewport = useCallback(
+    (_e, vp) => {
+      try {
+        localStorage.setItem(`vp:${project.id}`, JSON.stringify(vp))
+      } catch {
+        /* ignore */
+      }
+    },
+    [project.id],
+  )
 
   // When a task node is deleted, React Flow also fires onEdgesDelete for its
   // edges. We let the node-delete path own those (it snapshots them) and skip
@@ -113,7 +133,7 @@ function Board({ project, legend }) {
     ;(async () => {
       const { data: t } = await supabase
         .from('tasks')
-        .select('id, title, notes, status, color, task_date, pos_x, pos_y, position')
+        .select('id, title, notes, status, color, task_date, week_start, plan_month, pos_x, pos_y, position')
         .eq('project_id', project.id)
         .order('position')
       const taskList = t ?? []
@@ -347,7 +367,7 @@ function Board({ project, legend }) {
             const { data } = await supabase
               .from('tasks')
               .insert(taskCopies)
-              .select('id, title, notes, status, color, task_date, pos_x, pos_y, position')
+              .select('id, title, notes, status, color, task_date, week_start, plan_month, pos_x, pos_y, position')
             if (data) {
               setTasks((t) => [...t, ...data])
               undoIds.tasks = data.map((d) => d.id)
@@ -610,19 +630,6 @@ function Board({ project, legend }) {
     })
   }
 
-  // Open a task from the planning panel and recentre the board on it.
-  const focusTask = useCallback(
-    (id) => {
-      setShowPlanning(false)
-      setOpenId(id)
-      const t = live.current.tasks.find((x) => x.id === id)
-      if (t && t.pos_x != null && t.pos_y != null) {
-        setCenter(t.pos_x + 120, t.pos_y + 32, { zoom: 1, duration: 600 })
-      }
-    },
-    [setCenter],
-  )
-
   const openTask = tasks.find((t) => t.id === openId) || null
   const isSelect = mode === 'select'
   const isDraw = mode === 'draw'
@@ -703,8 +710,10 @@ function Board({ project, legend }) {
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}
               nodeTypes={nodeTypes}
-              fitView
+              fitView={!savedViewport}
               fitViewOptions={{ duration: 500, padding: 0.2 }}
+              defaultViewport={savedViewport || undefined}
+              onMoveEnd={saveViewport}
               minZoom={0.2}
               proOptions={{ hideAttribution: true }}
               defaultEdgeOptions={{ style: { stroke: '#CFC8D6', strokeWidth: 1.5 } }}
@@ -740,7 +749,13 @@ function Board({ project, legend }) {
       </div>
 
       {showPlanning && (
-        <PlanningPanel tasks={tasks} onClose={() => setShowPlanning(false)} onOpenTask={focusTask} />
+        <PlanningView
+          tasks={tasks}
+          legend={legend}
+          onClose={() => setShowPlanning(false)}
+          onSchedule={saveTask}
+          onOpenTask={setOpenId}
+        />
       )}
 
       {openTask && (
