@@ -17,6 +17,7 @@ import TaskNode from '../components/TaskNode'
 import TextNode from '../components/TextNode'
 import TaskDrawer from '../components/TaskDrawer'
 import DrawingLayer from '../components/DrawingLayer'
+import PlanningPanel from '../components/PlanningPanel'
 import BoardToolbar, { PEN_COLORS } from '../components/BoardToolbar'
 import { computeTaskStates, wouldCreateCycle } from '../lib/graph'
 
@@ -32,7 +33,7 @@ function fallbackPos(index) {
 
 function Board({ project, legend }) {
   const { user } = useAuth()
-  const { screenToFlowPosition, getViewport, setViewport } = useReactFlow()
+  const { screenToFlowPosition, getViewport, setViewport, setCenter } = useReactFlow()
 
   const [tasks, setTasks] = useState([])
   const [deps, setDeps] = useState([])
@@ -40,6 +41,7 @@ function Board({ project, legend }) {
   const [strokes, setStrokes] = useState([])
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState(null)
+  const [showPlanning, setShowPlanning] = useState(false)
 
   const [mode, setMode] = useState('select') // 'select' | 'text' | 'draw'
   const [penColor, setPenColor] = useState(PEN_COLORS[0])
@@ -111,7 +113,7 @@ function Board({ project, legend }) {
     ;(async () => {
       const { data: t } = await supabase
         .from('tasks')
-        .select('id, title, notes, status, color, pos_x, pos_y, position')
+        .select('id, title, notes, status, color, task_date, pos_x, pos_y, position')
         .eq('project_id', project.id)
         .order('position')
       const taskList = t ?? []
@@ -345,7 +347,7 @@ function Board({ project, legend }) {
             const { data } = await supabase
               .from('tasks')
               .insert(taskCopies)
-              .select('id, title, notes, status, color, pos_x, pos_y, position')
+              .select('id, title, notes, status, color, task_date, pos_x, pos_y, position')
             if (data) {
               setTasks((t) => [...t, ...data])
               undoIds.tasks = data.map((d) => d.id)
@@ -608,6 +610,19 @@ function Board({ project, legend }) {
     })
   }
 
+  // Open a task from the planning panel and recentre the board on it.
+  const focusTask = useCallback(
+    (id) => {
+      setShowPlanning(false)
+      setOpenId(id)
+      const t = live.current.tasks.find((x) => x.id === id)
+      if (t && t.pos_x != null && t.pos_y != null) {
+        setCenter(t.pos_x + 120, t.pos_y + 32, { zoom: 1, duration: 600 })
+      }
+    },
+    [setCenter],
+  )
+
   const openTask = tasks.find((t) => t.id === openId) || null
   const isSelect = mode === 'select'
   const isDraw = mode === 'draw'
@@ -627,12 +642,20 @@ function Board({ project, legend }) {
             )}
           </p>
         </div>
-        <button
-          onClick={addTask}
-          className="shrink-0 px-4 py-2 rounded-full bg-sunrise-warm text-white text-sm font-medium shadow-soft hover:opacity-95 hover:shadow-card active:scale-95 transition"
-        >
-          + Tâche
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setShowPlanning(true)}
+            className="px-4 py-2 rounded-full bg-white text-dusk-600 text-sm font-medium shadow-card hover:shadow-soft active:scale-95 transition"
+          >
+            📅 Planning
+          </button>
+          <button
+            onClick={addTask}
+            className="px-4 py-2 rounded-full bg-sunrise-warm text-white text-sm font-medium shadow-soft hover:opacity-95 hover:shadow-card active:scale-95 transition"
+          >
+            + Tâche
+          </button>
+        </div>
       </header>
 
       {/* Board */}
@@ -715,6 +738,10 @@ function Board({ project, legend }) {
           </>
         )}
       </div>
+
+      {showPlanning && (
+        <PlanningPanel tasks={tasks} onClose={() => setShowPlanning(false)} onOpenTask={focusTask} />
+      )}
 
       {openTask && (
         <TaskDrawer

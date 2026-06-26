@@ -1,4 +1,5 @@
 import { Handle, Position } from '@xyflow/react'
+import { shortDate, todayISO, parseISO, differenceInCalendarDays } from '../lib/date'
 
 // Sober, Notion/Apple-like themes for the fixed task palette. The whole block is
 // tinted (soft background + matching border), not just an accent.
@@ -26,6 +27,20 @@ export default function TaskNode({ data, selected }) {
   const st = STATUS[statusKey]
   const t = (task.color && THEME[task.color]) || NEUTRAL
   const done = task.status === 'done'
+
+  let dueColor = t.muted
+  let dueLabel = null
+  if (task.task_date) {
+    const diff = differenceInCalendarDays(parseISO(task.task_date), parseISO(todayISO()))
+    dueLabel = shortDate(task.task_date)
+    if (!done && diff < 0) {
+      dueColor = '#E0604E'
+      dueLabel = `${dueLabel} · en retard`
+    } else if (!done && diff === 0) {
+      dueColor = '#E1933F'
+      dueLabel = "aujourd'hui"
+    }
+  }
 
   return (
     <div
@@ -62,6 +77,12 @@ export default function TaskNode({ data, selected }) {
       >
         {task.title}
       </p>
+
+      {dueLabel && (
+        <div className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium" style={{ color: dueColor }}>
+          🗓 {dueLabel}
+        </div>
+      )}
 
       <Handle
         type="source"
