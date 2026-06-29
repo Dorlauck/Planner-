@@ -33,33 +33,27 @@ export default function AuthScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-sunrise flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo / brand */}
+    <div className="min-h-screen bg-app text-fg flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
         <div className="text-center mb-8 animate-fade-up">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-sunrise-warm shadow-soft mb-4">
-            <span className="text-3xl">🌅</span>
-          </div>
-          <h1 className="text-4xl font-serif font-semibold text-dusk-900">Sunrise</h1>
-          <p className="text-dusk-500 mt-1">
-            Objectifs · Habitudes · Journée · Journal
-          </p>
+          <h1 className="text-3xl font-semibold tracking-tight text-fg">Planner</h1>
+          <p className="text-muted mt-1 text-sm">Organise ton projet, sans le complexifier.</p>
         </div>
 
-        <div className="bg-white/80 backdrop-blur rounded-3xl shadow-soft p-8 animate-fade-up">
-          <div className="flex gap-2 mb-6 p-1 bg-peach-50 rounded-full">
+        <div className="bg-surface border border-line rounded-2xl shadow-card p-7 animate-fade-up">
+          <div className="flex gap-1 mb-6 p-1 bg-surface2 rounded-lg">
             <button
               onClick={() => setMode('signin')}
-              className={`flex-1 py-2 rounded-full text-sm font-medium transition ${
-                mode === 'signin' ? 'bg-white shadow-card text-peach-600' : 'text-dusk-400'
+              className={`flex-1 py-2 rounded-md text-sm font-medium transition ${
+                mode === 'signin' ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
               }`}
             >
               Connexion
             </button>
             <button
               onClick={() => setMode('signup')}
-              className={`flex-1 py-2 rounded-full text-sm font-medium transition ${
-                mode === 'signup' ? 'bg-white shadow-card text-peach-600' : 'text-dusk-400'
+              className={`flex-1 py-2 rounded-md text-sm font-medium transition ${
+                mode === 'signup' ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
               }`}
             >
               Créer un compte
@@ -68,18 +62,18 @@ export default function AuthScreen() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm text-dusk-500 mb-1">Email</label>
+              <label className="block text-sm text-muted mb-1">Email</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="toi@exemple.com"
-                className="w-full px-4 py-3 rounded-xl border border-peach-100 bg-cream focus:outline-none focus:ring-2 focus:ring-peach-300"
+                className="w-full px-4 py-2.5 rounded-lg border border-line bg-surface2 text-fg focus:outline-none focus:ring-2 focus:ring-accent/30 placeholder:text-faint"
               />
             </div>
             <div>
-              <label className="block text-sm text-dusk-500 mb-1">Mot de passe</label>
+              <label className="block text-sm text-muted mb-1">Mot de passe</label>
               <input
                 type="password"
                 required
@@ -87,26 +81,24 @@ export default function AuthScreen() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-3 rounded-xl border border-peach-100 bg-cream focus:outline-none focus:ring-2 focus:ring-peach-300"
+                className="w-full px-4 py-2.5 rounded-lg border border-line bg-surface2 text-fg focus:outline-none focus:ring-2 focus:ring-accent/30 placeholder:text-faint"
               />
             </div>
 
-            {error && <p className="text-sm text-coral-600">{error}</p>}
-            {message && <p className="text-sm text-peach-600">{message}</p>}
+            {error && <p className="text-sm text-red-500">{error}</p>}
+            {message && <p className="text-sm text-fg">{message}</p>}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-xl bg-sunrise-warm text-white font-medium shadow-soft hover:opacity-95 transition disabled:opacity-60"
+              className="w-full py-2.5 rounded-lg bg-accent text-accent-fg font-medium shadow-card hover:opacity-90 active:scale-[0.99] transition disabled:opacity-60"
             >
               {loading ? '…' : mode === 'signin' ? 'Se connecter' : 'Créer mon compte'}
             </button>
           </form>
         </div>
 
-        <p className="text-center text-xs text-dusk-400 mt-6">
-          Tes données sont privées et protégées par RLS.
-        </p>
+        <p className="text-center text-xs text-faint mt-6">Tes données sont privées et protégées par RLS.</p>
       </div>
     </div>
   )

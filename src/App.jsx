@@ -89,8 +89,8 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-sunrise flex items-center justify-center">
-        <span className="text-4xl animate-pulse">🗺️</span>
+      <div className="min-h-screen bg-app flex items-center justify-center">
+        <span className="w-6 h-6 rounded-full border-2 border-line border-t-fg animate-spin" />
       </div>
     )
   }
@@ -100,7 +100,7 @@ export default function App() {
   const currentProject = projects.find((p) => p.id === currentId) || null
 
   return (
-    <div className="min-h-screen bg-sunrise flex flex-col md:flex-row">
+    <div className="min-h-screen bg-app text-fg flex flex-col md:flex-row">
       <Sidebar
         projects={projects}
         currentId={currentId}
@@ -116,20 +116,19 @@ export default function App() {
           <ProjectBoard key={currentProject.id} project={currentProject} legend={legend} />
         ) : (
           <div className="h-full min-h-[70vh] flex flex-col items-center justify-center text-center px-6">
-            <span className="text-5xl mb-4">🗺️</span>
-            <h1 className="text-2xl font-semibold text-dusk-900 mb-2">
+            <h1 className="text-2xl font-semibold text-fg mb-2 tracking-tight">
               {ready ? 'Crée ton premier projet' : 'Chargement…'}
             </h1>
-            <p className="text-dusk-400 max-w-sm">
+            <p className="text-muted max-w-sm">
               Un projet = un espace pour déposer toutes tes tâches, les relier
               par dépendances, et garder tes notes. Les dates viendront après.
             </p>
             {ready && (
               <button
                 onClick={() => createProject('Mon projet')}
-                className="mt-6 px-5 py-2.5 rounded-full bg-sunrise-warm text-white text-sm font-medium shadow-soft"
+                className="mt-6 px-5 py-2.5 rounded-full bg-accent text-accent-fg text-sm font-medium shadow-card active:scale-95 transition"
               >
-                + Nouveau projet
+                Nouveau projet
               </button>
             )}
           </div>

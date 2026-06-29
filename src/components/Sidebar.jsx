@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { TASK_COLORS } from '../lib/palette'
+import { SunIcon, MoonIcon, PlusIcon, ChevronLeft, ChevronRight } from './icons'
 
 function LegendRow({ color, label, onChange }) {
   const [val, setVal] = useState(label)
@@ -8,16 +10,13 @@ function LegendRow({ color, label, onChange }) {
 
   return (
     <div className="flex items-center gap-2.5">
-      <span
-        className="w-4 h-4 rounded-full shrink-0 border border-black/5"
-        style={{ backgroundColor: color }}
-      />
+      <span className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: color }} />
       <input
         value={val}
         onChange={(e) => setVal(e.target.value)}
         onBlur={() => val !== label && onChange(color, val.trim())}
         placeholder="…"
-        className="flex-1 min-w-0 text-sm text-dusk-700 bg-transparent focus:outline-none placeholder:text-dusk-300"
+        className="flex-1 min-w-0 text-sm text-fg bg-transparent focus:outline-none placeholder:text-faint"
       />
     </div>
   )
@@ -34,13 +33,14 @@ export default function Sidebar({
   onLegendChange,
 }) {
   const { user, signOut } = useAuth()
+  const { dark, toggle } = useTheme()
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
   const [collapsed, setCollapsed] = useState(
     () => typeof localStorage !== 'undefined' && localStorage.getItem('sidebarCollapsed') === '1',
   )
 
-  function toggle() {
+  function toggleCollapse() {
     setCollapsed((c) => {
       const next = !c
       try {
@@ -61,23 +61,33 @@ export default function Sidebar({
     setAdding(false)
   }
 
+  const themeBtn = (
+    <button
+      onClick={toggle}
+      title={dark ? 'Passer en clair' : 'Passer en sombre'}
+      className="w-8 h-8 rounded-lg text-muted hover:bg-surface2 hover:text-fg flex items-center justify-center transition"
+    >
+      {dark ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+    </button>
+  )
+
   return (
     <aside
-      className={`flex md:flex-col w-full shrink-0 bg-white/70 backdrop-blur border-b md:border-b-0 md:border-r border-peach-100 md:h-screen md:sticky md:top-0 p-4 md:p-5 transition-[width] duration-300 ease-out ${
+      className={`flex md:flex-col w-full shrink-0 bg-surface border-b md:border-b-0 md:border-r border-line md:h-screen md:sticky md:top-0 p-4 md:p-5 transition-[width] duration-300 ease-out ${
         collapsed ? 'md:w-16' : 'md:w-72'
       }`}
     >
-      {/* ---- Desktop, collapsed: thin rail ---- */}
+      {/* Desktop, collapsed: thin rail */}
       {collapsed && (
         <div className="hidden md:flex flex-col items-center gap-3 flex-1">
           <button
-            onClick={toggle}
-            className="w-9 h-9 rounded-xl text-dusk-500 hover:bg-peach-50 flex items-center justify-center transition"
+            onClick={toggleCollapse}
+            className="w-9 h-9 rounded-xl text-muted hover:bg-surface2 hover:text-fg flex items-center justify-center transition"
             title="Déplier le menu"
           >
-            »
+            <ChevronRight size={16} />
           </button>
-          <div className="w-8 border-t border-peach-100" />
+          <div className="w-8 border-t border-line" />
           <div className="flex-1 flex flex-col gap-2 items-center overflow-y-auto scrollbar-thin">
             {projects.map((p) => (
               <button
@@ -85,46 +95,42 @@ export default function Sidebar({
                 onClick={() => onSelect(p.id)}
                 title={p.name}
                 className={`w-9 h-9 rounded-xl flex items-center justify-center transition ${
-                  currentId === p.id ? 'bg-sunrise-warm shadow-card' : 'hover:bg-peach-50'
+                  currentId === p.id ? 'bg-accent' : 'hover:bg-surface2'
                 }`}
               >
                 <span
                   className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: currentId === p.id ? '#fff' : p.color }}
+                  style={{ backgroundColor: currentId === p.id ? 'rgb(var(--accent-fg))' : p.color }}
                 />
               </button>
             ))}
           </div>
+          {themeBtn}
         </div>
       )}
 
-      {/* ---- Desktop, expanded ---- */}
+      {/* Desktop, expanded */}
       {!collapsed && (
         <div className="hidden md:flex md:flex-col flex-1 min-h-0">
           <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2 px-1">
-              <span className="text-2xl">🗺️</span>
-              <span className="font-serif text-xl font-semibold text-dusk-900">Planner</span>
-            </div>
+            <span className="text-lg font-semibold tracking-tight text-fg px-1">Planner</span>
             <button
-              onClick={toggle}
-              className="w-8 h-8 rounded-lg text-dusk-400 hover:bg-peach-50 flex items-center justify-center transition"
+              onClick={toggleCollapse}
+              className="w-8 h-8 rounded-lg text-muted hover:bg-surface2 hover:text-fg flex items-center justify-center transition"
               title="Replier le menu"
             >
-              «
+              <ChevronLeft size={16} />
             </button>
           </div>
 
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-dusk-400 px-1 mb-2">Projets</p>
-          <nav className="space-y-1 overflow-y-auto scrollbar-thin">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted px-1 mb-2">Projets</p>
+          <nav className="space-y-0.5 overflow-y-auto scrollbar-thin">
             {projects.map((p) => (
               <div key={p.id} className="group relative">
                 <button
                   onClick={() => onSelect(p.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
-                    currentId === p.id
-                      ? 'bg-sunrise-warm text-white shadow-card'
-                      : 'text-dusk-700 hover:bg-peach-50'
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition ${
+                    currentId === p.id ? 'bg-surface2 text-fg' : 'text-muted hover:bg-surface2 hover:text-fg'
                   }`}
                 >
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
@@ -132,12 +138,12 @@ export default function Sidebar({
                 </button>
                 <button
                   onClick={() => onDelete(p)}
-                  className={`absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition text-xs ${
-                    currentId === p.id ? 'text-white/70 hover:text-white' : 'text-dusk-300 hover:text-coral-500'
-                  }`}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition text-faint hover:text-red-500"
                   aria-label="Supprimer le projet"
                 >
-                  ✕
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
                 </button>
               </div>
             ))}
@@ -150,25 +156,23 @@ export default function Sidebar({
                   onChange={(e) => setName(e.target.value)}
                   onBlur={() => !name.trim() && setAdding(false)}
                   placeholder="Nom du projet…"
-                  className="w-full text-sm px-3 py-2 rounded-xl bg-cream focus:outline-none focus:ring-2 focus:ring-peach-300"
+                  className="w-full text-sm px-3 py-2 rounded-lg bg-surface2 text-fg focus:outline-none focus:ring-2 focus:ring-accent/30 placeholder:text-faint"
                 />
               </form>
             ) : (
               <button
                 onClick={() => setAdding(true)}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-dusk-400 hover:bg-peach-50 hover:text-dusk-700 transition"
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-muted hover:bg-surface2 hover:text-fg transition"
               >
-                <span className="text-lg leading-none">＋</span>
+                <PlusIcon size={15} />
                 <span className="font-medium text-sm">Nouveau projet</span>
               </button>
             )}
           </nav>
 
           {hasProject && (
-            <div className="mt-6 pt-4 border-t border-peach-100">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-dusk-400 px-1 mb-3">
-                Légende des couleurs
-              </p>
+            <div className="mt-6 pt-4 border-t border-line">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted px-1 mb-3">Légende</p>
               <div className="space-y-2.5 px-1">
                 {TASK_COLORS.map((c) => (
                   <LegendRow key={c} color={c} label={legend[c] ?? ''} onChange={onLegendChange} />
@@ -177,26 +181,26 @@ export default function Sidebar({
             </div>
           )}
 
-          <div className="border-t border-peach-100 pt-4 mt-auto">
-            <p className="text-xs text-dusk-400 px-2 mb-2 truncate">{user?.email}</p>
-            <button
-              onClick={signOut}
-              className="w-full text-left px-3 py-2 rounded-xl text-sm text-dusk-500 hover:bg-peach-50 transition"
-            >
-              Se déconnecter
-            </button>
+          <div className="border-t border-line pt-4 mt-auto flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs text-muted truncate">{user?.email}</p>
+              <button onClick={signOut} className="text-xs text-faint hover:text-fg transition mt-0.5">
+                Se déconnecter
+              </button>
+            </div>
+            {themeBtn}
           </div>
         </div>
       )}
 
-      {/* ---- Mobile: horizontal project bar (always) ---- */}
+      {/* Mobile: horizontal project bar */}
       <div className="md:hidden flex-1 overflow-x-auto flex gap-2 items-center">
         {projects.map((p) => (
           <button
             key={p.id}
             onClick={() => onSelect(p.id)}
-            className={`shrink-0 px-3 py-2 rounded-xl text-sm font-medium ${
-              currentId === p.id ? 'bg-sunrise-warm text-white' : 'bg-peach-50 text-dusk-600'
+            className={`shrink-0 px-3 py-2 rounded-lg text-sm font-medium ${
+              currentId === p.id ? 'bg-accent text-accent-fg' : 'bg-surface2 text-muted'
             }`}
           >
             {p.name}
@@ -204,10 +208,11 @@ export default function Sidebar({
         ))}
         <button
           onClick={() => onCreate('Nouveau projet')}
-          className="shrink-0 px-3 py-2 rounded-xl bg-peach-50 text-dusk-500"
+          className="shrink-0 w-9 h-9 rounded-lg bg-surface2 text-muted flex items-center justify-center"
         >
-          ＋
+          <PlusIcon size={16} />
         </button>
+        {themeBtn}
       </div>
     </aside>
   )

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { TASK_COLORS } from '../lib/palette'
+import { CloseIcon } from './icons'
 
 const STATUSES = [
   { id: 'todo', label: 'À faire' },
@@ -13,7 +14,6 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
   const [title, setTitle] = useState(task.title)
   const [notes, setNotes] = useState(task.notes ?? '')
 
-  // Re-sync when a different task is opened.
   useEffect(() => {
     setTitle(task.title)
     setNotes(task.notes ?? '')
@@ -35,18 +35,16 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
     if ((notes ?? '') !== (task.notes ?? '')) onSave({ notes })
   }
 
+  const label = 'text-[11px] font-semibold uppercase tracking-wider text-muted mb-2'
+
   return (
     <>
-      <div className="fixed inset-0 bg-dusk-900/10 z-30 animate-overlay-in" onClick={onClose} />
-      <aside className="fixed top-0 right-0 z-40 h-full w-full max-w-md bg-cream shadow-soft border-l border-peach-100 flex flex-col animate-slide-in-right">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-peach-100">
-          <span className="text-xs font-medium uppercase tracking-wide text-peach-500">Tâche</span>
-          <button
-            onClick={onClose}
-            className="text-dusk-400 hover:text-dusk-700 text-lg leading-none"
-            aria-label="Fermer"
-          >
-            ✕
+      <div className="fixed inset-0 bg-black/30 z-30 animate-overlay-in" onClick={onClose} />
+      <aside className="fixed top-0 right-0 z-40 h-full w-full max-w-md bg-surface border-l border-line flex flex-col animate-slide-in-right">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-line">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">Tâche</span>
+          <button onClick={onClose} className="text-muted hover:text-fg transition" aria-label="Fermer">
+            <CloseIcon size={18} />
           </button>
         </div>
 
@@ -57,22 +55,20 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
             onChange={(e) => setTitle(e.target.value)}
             onBlur={commitTitle}
             rows={2}
-            className="w-full text-xl font-serif font-semibold text-dusk-900 bg-transparent resize-none focus:outline-none"
+            className="w-full text-xl font-semibold tracking-tight text-fg bg-transparent resize-none focus:outline-none placeholder:text-faint"
             placeholder="Titre de la tâche"
           />
 
           {/* Status */}
           <div>
-            <p className="text-xs font-medium text-dusk-500 mb-2">Statut</p>
-            <div className="flex gap-1.5 p-1 bg-white rounded-xl shadow-card">
+            <p className={label}>Statut</p>
+            <div className="flex gap-1 p-1 bg-surface2 rounded-lg">
               {STATUSES.map((st) => (
                 <button
                   key={st.id}
                   onClick={() => onSave({ status: st.id })}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
-                    task.status === st.id
-                      ? 'bg-sunrise-warm text-white shadow-soft'
-                      : 'text-dusk-500 hover:bg-peach-50'
+                  className={`flex-1 py-1.5 rounded-md text-sm font-medium transition ${
+                    task.status === st.id ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
                   }`}
                 >
                   {st.label}
@@ -83,19 +79,16 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
 
           {/* Due date */}
           <div>
-            <p className="text-xs font-medium text-dusk-500 mb-2">Échéance</p>
+            <p className={label}>Échéance</p>
             <div className="flex items-center gap-3">
               <input
                 type="date"
                 value={task.task_date ?? ''}
                 onChange={(e) => onSave({ task_date: e.target.value || null })}
-                className="text-sm text-dusk-700 bg-white rounded-xl shadow-card px-3 py-2 focus:outline-none focus:ring-2 focus:ring-peach-300"
+                className="text-sm text-fg bg-surface2 rounded-lg px-3 py-2 border border-line focus:outline-none focus:ring-2 focus:ring-accent/30 [color-scheme:light] dark:[color-scheme:dark]"
               />
               {task.task_date && (
-                <button
-                  onClick={() => onSave({ task_date: null })}
-                  className="text-xs text-dusk-400 hover:text-coral-500 transition"
-                >
+                <button onClick={() => onSave({ task_date: null })} className="text-xs text-faint hover:text-fg transition">
                   retirer
                 </button>
               )}
@@ -104,15 +97,15 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
 
           {/* Colour / category */}
           <div>
-            <p className="text-xs font-medium text-dusk-500 mb-2">Couleur</p>
+            <p className={label}>Couleur</p>
             <div className="flex flex-wrap items-center gap-2">
               {TASK_COLORS.map((c) => (
                 <button
                   key={c}
                   onClick={() => onSave({ color: c })}
                   title={legend[c] || 'Sans signification'}
-                  className={`w-7 h-7 rounded-full border border-black/5 transition ${
-                    task.color === c ? 'ring-2 ring-offset-2 ring-dusk-400' : ''
+                  className={`w-7 h-7 rounded-full border border-black/10 transition ${
+                    task.color === c ? 'ring-2 ring-offset-2 ring-offset-surface ring-accent/60' : ''
                   }`}
                   style={{ backgroundColor: c }}
                 />
@@ -120,8 +113,8 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
               <button
                 onClick={() => onSave({ color: null })}
                 title="Aucune couleur"
-                className={`w-7 h-7 rounded-full border-2 border-dashed border-dusk-300 text-dusk-300 text-xs flex items-center justify-center ${
-                  !task.color ? 'ring-2 ring-offset-2 ring-dusk-400' : ''
+                className={`w-7 h-7 rounded-full border-2 border-dashed border-faint text-faint text-xs flex items-center justify-center ${
+                  !task.color ? 'ring-2 ring-offset-2 ring-offset-surface ring-accent/60' : ''
                 }`}
               >
                 ∅
@@ -131,49 +124,41 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
 
           {/* Notes */}
           <div>
-            <p className="text-xs font-medium text-dusk-500 mb-2">Notes</p>
+            <p className={label}>Notes</p>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               onBlur={commitNotes}
               rows={8}
               placeholder="Détails, idées, liens, ce que tu ne veux pas oublier…"
-              className="w-full text-sm text-dusk-700 bg-white rounded-xl shadow-card p-4 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-peach-300"
+              className="w-full text-sm text-fg bg-surface2 rounded-lg p-4 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-accent/30 placeholder:text-faint"
             />
           </div>
 
           {/* Dependencies */}
           <div>
-            <p className="text-xs font-medium text-dusk-500 mb-2">Bloquée par</p>
+            <p className={label}>Bloquée par</p>
             {prereqs.length === 0 ? (
-              <p className="text-sm text-dusk-400">
+              <p className="text-sm text-muted">
                 Aucune dépendance. Relie une tâche à celle-ci sur le graphe pour en ajouter.
               </p>
             ) : (
               <ul className="space-y-1.5">
                 {prereqs.map(({ dep, task: p }) => (
-                  <li
-                    key={dep.id}
-                    className="group flex items-center gap-2 bg-white rounded-xl shadow-card px-3 py-2"
-                  >
+                  <li key={dep.id} className="group flex items-center gap-2 bg-surface2 rounded-lg px-3 py-2">
                     <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${
-                        p.status === 'done' ? 'bg-emerald-400' : 'bg-dusk-400/40'
-                      }`}
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ background: p.status === 'done' ? '#5FA86A' : 'rgb(var(--faint))' }}
                     />
-                    <span
-                      className={`flex-1 text-sm truncate ${
-                        p.status === 'done' ? 'text-dusk-400 line-through' : 'text-dusk-700'
-                      }`}
-                    >
+                    <span className={`flex-1 text-sm truncate ${p.status === 'done' ? 'text-muted line-through' : 'text-fg'}`}>
                       {p.title}
                     </span>
                     <button
                       onClick={() => onRemoveDep(dep.id)}
-                      className="opacity-0 group-hover:opacity-100 text-dusk-300 hover:text-coral-500 transition"
+                      className="opacity-0 group-hover:opacity-100 text-faint hover:text-red-500 transition"
                       aria-label="Retirer la dépendance"
                     >
-                      ✕
+                      <CloseIcon size={14} />
                     </button>
                   </li>
                 ))}
@@ -182,11 +167,8 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-peach-100">
-          <button
-            onClick={() => onDelete(task.id)}
-            className="text-sm text-dusk-400 hover:text-coral-500 transition"
-          >
+        <div className="px-6 py-4 border-t border-line">
+          <button onClick={() => onDelete(task.id)} className="text-sm text-faint hover:text-red-500 transition">
             Supprimer la tâche
           </button>
         </div>

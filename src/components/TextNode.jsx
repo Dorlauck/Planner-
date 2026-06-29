@@ -31,7 +31,7 @@ export default function TextNode({ id, data, selected }) {
   return (
     <div
       className={`rounded-lg px-2 py-1 transition ${
-        selected ? 'ring-2 ring-peach-300 bg-white/60' : ''
+        selected ? 'ring-2 ring-accent/40 bg-surface/60' : ''
       }`}
     >
       <textarea
@@ -44,7 +44,7 @@ export default function TextNode({ id, data, selected }) {
         onBlur={() => data.onCommit?.(id, val)}
         rows={1}
         placeholder="Texte libre…"
-        className="nodrag nopan bg-transparent text-dusk-800 text-base font-medium leading-snug resize-none overflow-hidden focus:outline-none w-44 placeholder:text-dusk-300 placeholder:font-normal"
+        className="nodrag nopan bg-transparent text-fg text-base font-medium leading-snug resize-none overflow-hidden focus:outline-none w-44 placeholder:text-faint placeholder:font-normal"
       />
     </div>
   )

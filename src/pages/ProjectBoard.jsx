@@ -20,6 +20,8 @@ import DrawingLayer from '../components/DrawingLayer'
 import PlanningView from '../components/PlanningView'
 import BoardToolbar, { PEN_COLORS } from '../components/BoardToolbar'
 import { computeTaskStates, wouldCreateCycle } from '../lib/graph'
+import { useTheme } from '../contexts/ThemeContext'
+import { CalendarIcon, PlusIcon } from '../components/icons'
 
 const nodeTypes = { task: TaskNode, text: TextNode }
 const STROKE_WIDTH = 3 // flow-space thickness (scales with zoom)
@@ -33,6 +35,7 @@ function fallbackPos(index) {
 
 function Board({ project, legend }) {
   const { user } = useAuth()
+  const { dark } = useTheme()
   const { screenToFlowPosition, getViewport, setViewport } = useReactFlow()
 
   const [tasks, setTasks] = useState([])
@@ -215,10 +218,10 @@ function Board({ project, legend }) {
         source: d.depends_on_id,
         target: d.task_id,
         animated: states.get(d.task_id)?.blocked ?? false,
-        style: { stroke: '#CFC8D6', strokeWidth: 1.5 },
+        style: { stroke: dark ? '#55555E' : '#CFC8D6', strokeWidth: 1.5 },
       })),
     )
-  }, [deps, states, setEdges])
+  }, [deps, states, setEdges, dark])
 
   const readyCount = useMemo(
     () => tasks.filter((t) => states.get(t.id)?.ready).length,
@@ -641,13 +644,13 @@ function Board({ project, legend }) {
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
-      <header className="shrink-0 px-6 sm:px-8 py-4 bg-white/70 backdrop-blur border-b border-peach-100 flex items-center justify-between gap-4">
+      <header className="shrink-0 px-6 sm:px-8 py-4 bg-surface/80 backdrop-blur border-b border-line flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold text-dusk-900 truncate">{project.name}</h1>
-          <p className="text-sm text-dusk-400">
+          <h1 className="text-lg sm:text-xl font-semibold tracking-tight text-fg truncate">{project.name}</h1>
+          <p className="text-sm text-muted">
             {tasks.length} tâche{tasks.length > 1 ? 's' : ''}
             {readyCount > 0 && (
-              <span className="text-peach-600 font-medium">
+              <span className="text-fg font-medium">
                 {' '}· {readyCount} prête{readyCount > 1 ? 's' : ''} à démarrer
               </span>
             )}
@@ -656,15 +659,15 @@ function Board({ project, legend }) {
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setShowPlanning(true)}
-            className="px-4 py-2 rounded-full bg-white text-dusk-600 text-sm font-medium shadow-card hover:shadow-soft active:scale-95 transition"
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-surface text-fg text-sm font-medium border border-line hover:bg-surface2 active:scale-95 transition"
           >
-            📅 Planning
+            <CalendarIcon size={16} /> Planning
           </button>
           <button
             onClick={addTask}
-            className="px-4 py-2 rounded-full bg-sunrise-warm text-white text-sm font-medium shadow-soft hover:opacity-95 hover:shadow-card active:scale-95 transition"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-accent text-accent-fg text-sm font-medium shadow-card hover:opacity-90 active:scale-95 transition"
           >
-            + Tâche
+            <PlusIcon size={16} /> Tâche
           </button>
         </div>
       </header>
@@ -688,15 +691,15 @@ function Board({ project, legend }) {
 
             {tasks.length === 0 && texts.length === 0 && strokes.length === 0 && (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 pointer-events-none">
-                <p className="text-dusk-400 mb-4">
+                <p className="text-muted mb-4">
                   Board vide. Dépose des tâches, écris du texte libre, esquisse des idées —
-                  <br className="hidden sm:block" /> on reliera et on datera plus tard. 🗺️
+                  <br className="hidden sm:block" /> on reliera et on datera plus tard.
                 </p>
                 <button
                   onClick={addTask}
-                  className="px-5 py-2.5 rounded-full bg-sunrise-warm text-white text-sm font-medium shadow-soft pointer-events-auto"
+                  className="px-5 py-2.5 rounded-lg bg-accent text-accent-fg text-sm font-medium shadow-card pointer-events-auto active:scale-95 transition"
                 >
-                  + Première tâche
+                  Première tâche
                 </button>
               </div>
             )}
@@ -720,7 +723,7 @@ function Board({ project, legend }) {
               onMoveEnd={saveViewport}
               minZoom={0.2}
               proOptions={{ hideAttribution: true }}
-              defaultEdgeOptions={{ style: { stroke: '#CFC8D6', strokeWidth: 1.5 } }}
+              defaultEdgeOptions={{ style: { stroke: dark ? '#55555E' : '#CFC8D6', strokeWidth: 1.5 } }}
               deleteKeyCode={['Delete']}
               // --- interaction: desktop / Figma-style ---
               nodesDraggable={!isDraw}
@@ -735,9 +738,14 @@ function Board({ project, legend }) {
               zoomOnPinch
               selectionKeyCode={null}
             >
-              <Background color="#E5DCCF" gap={22} size={1} />
+              <Background color={dark ? '#34343A' : '#E2E2DE'} gap={22} size={1} />
               <Controls showInteractive={false} />
-              <MiniMap pannable zoomable className="!bg-white/80 !rounded-xl" />
+              <MiniMap
+                pannable
+                zoomable
+                maskColor={dark ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.06)'}
+                nodeColor={dark ? '#3A3A40' : '#D8D8D4'}
+              />
               <DrawingLayer
                 active={isDraw}
                 strokes={strokes}
