@@ -78,3 +78,29 @@ export const CloseIcon = (p) => (
     <path d="M6 6l12 12M18 6L6 18" />
   </Svg>
 )
+
+export const FlagIcon = (p) => (
+  <Svg {...p}>
+    <path d="M5 21V4M5 4h11l-2 3 2 3H5" />
+  </Svg>
+)
+
+export const ImageIcon = (p) => (
+  <Svg {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+    <circle cx="9" cy="10" r="1.6" />
+    <path d="M5 18l4.5-4.5L13 17l3-3 3 3" />
+  </Svg>
+)
+
+export const CheckIcon = (p) => (
+  <Svg {...p}>
+    <path d="M5 12.5l4 4 10-10" />
+  </Svg>
+)
+
+export const TrashIcon = (p) => (
+  <Svg {...p}>
+    <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
+  </Svg>
+)

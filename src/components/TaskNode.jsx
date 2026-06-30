@@ -1,7 +1,7 @@
 import { Handle, Position } from '@xyflow/react'
 import { shortDate, todayISO, parseISO, differenceInCalendarDays } from '../lib/date'
 import { useTheme } from '../contexts/ThemeContext'
-import { NoteIcon } from './icons'
+import { NoteIcon, ImageIcon, CheckIcon } from './icons'
 
 // Per-colour themes — the whole block is tinted. Two sets so the boxes read
 // well (and pop) on both light and dark backgrounds.
@@ -33,7 +33,9 @@ const STATUS = {
 
 export default function TaskNode({ data, selected }) {
   const { dark } = useTheme()
-  const { task, state } = data
+  const { task, state, imgCount = 0 } = data
+  const checklist = Array.isArray(task.checklist) ? task.checklist : []
+  const checkDone = checklist.filter((c) => c.done).length
   const statusKey =
     task.status === 'done' ? 'done' : task.status === 'doing' ? 'doing' : state.ready ? 'ready' : 'blocked'
   const st = STATUS[statusKey]
@@ -74,7 +76,21 @@ export default function TaskNode({ data, selected }) {
           {st.label}
           {statusKey === 'blocked' && state.remaining.length > 0 && <span>· {state.remaining.length}</span>}
         </span>
-        {task.notes?.trim() && <NoteIcon size={13} style={{ color: t.muted }} />}
+        <span className="inline-flex items-center gap-2" style={{ color: t.muted }}>
+          {checklist.length > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-[11px]">
+              <CheckIcon size={12} />
+              {checkDone}/{checklist.length}
+            </span>
+          )}
+          {imgCount > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-[11px]">
+              <ImageIcon size={12} />
+              {imgCount}
+            </span>
+          )}
+          {task.notes?.trim() && <NoteIcon size={13} />}
+        </span>
       </div>
 
       <p className="text-[15px] font-medium leading-snug" style={{ textDecoration: done ? 'line-through' : 'none' }}>

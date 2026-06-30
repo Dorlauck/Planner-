@@ -75,13 +75,14 @@ export default function PlanningView({ tasks, legend = {}, onClose, onSchedule, 
   const [cursor, setCursor] = useState(() => new Date())
 
   const pool = useMemo(() => {
-    if (view === 'quarter') return tasks.filter((t) => !t.plan_month && t.status !== 'done')
+    const ok = (t) => !t.is_milestone && t.status !== 'done'
+    if (view === 'quarter') return tasks.filter((t) => ok(t) && !t.plan_month)
     if (view === 'month') {
       const m = iso(firstOfMonth(cursor))
-      return tasks.filter((t) => t.plan_month === m && !t.week_start && t.status !== 'done')
+      return tasks.filter((t) => ok(t) && t.plan_month === m && !t.week_start)
     }
     const w = iso(monday(cursor))
-    return tasks.filter((t) => t.week_start === w && !t.task_date && t.status !== 'done')
+    return tasks.filter((t) => ok(t) && t.week_start === w && !t.task_date)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, view, cursor])
 

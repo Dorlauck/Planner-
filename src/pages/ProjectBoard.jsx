@@ -15,15 +15,16 @@ import { useAuth } from '../contexts/AuthContext'
 import Spinner from '../components/Spinner'
 import TaskNode from '../components/TaskNode'
 import TextNode from '../components/TextNode'
+import MilestoneNode from '../components/MilestoneNode'
 import TaskDrawer from '../components/TaskDrawer'
 import DrawingLayer from '../components/DrawingLayer'
 import PlanningView from '../components/PlanningView'
 import BoardToolbar, { PEN_COLORS } from '../components/BoardToolbar'
 import { computeTaskStates, wouldCreateCycle } from '../lib/graph'
 import { useTheme } from '../contexts/ThemeContext'
-import { CalendarIcon, PlusIcon } from '../components/icons'
+import { CalendarIcon, PlusIcon, FlagIcon } from '../components/icons'
 
-const nodeTypes = { task: TaskNode, text: TextNode }
+const nodeTypes = { task: TaskNode, text: TextNode, milestone: MilestoneNode }
 const STROKE_WIDTH = 3 // flow-space thickness (scales with zoom)
 
 // A loose grid so brand-new / never-positioned tasks don't stack up.
@@ -36,7 +37,7 @@ function fallbackPos(index) {
 function Board({ project, legend }) {
   const { user } = useAuth()
   const { dark } = useTheme()
-  const { screenToFlowPosition, getViewport, setViewport } = useReactFlow()
+  const { screenToFlowPosition, getViewport, setViewport, fitView } = useReactFlow()
 
   const [tasks, setTasks] = useState([])
   const [deps, setDeps] = useState([])
@@ -45,6 +46,8 @@ function Board({ project, legend }) {
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState(null)
   const [showPlanning, setShowPlanning] = useState(false)
+  const [imgCounts, setImgCounts] = useState({})
+  const [showHelp, setShowHelp] = useState(false)
 
   const [mode, setMode] = useState('select') // 'select' | 'text' | 'draw'
   const [penColor, setPenColor] = useState(PEN_COLORS[0])
@@ -127,6 +130,72 @@ function Board({ project, legend }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // ---- Keyboard shortcuts ----------------------------------------------
+  const ui = useRef({})
+  ui.current = { showPlanning, showHelp, openId }
+  const fns = useRef({})
+  fns.current = { addTask, fitView, setShowPlanning, setOpenId, setShowHelp }
+  useEffect(() => {
+    function nudge(sel, dx, dy) {
+      for (const n of sel) {
+        const isText = n.type === 'text'
+        const arr = isText ? live.current.texts : live.current.tasks
+        const prev = arr.find((x) => x.id === n.id)
+        if (!prev) continue
+        const nx = (prev.pos_x ?? n.position.x) + dx
+        const ny = (prev.pos_y ?? n.position.y) + dy
+        const setter = isText ? setTexts : setTasks
+        setter((items) => items.map((x) => (x.id === n.id ? { ...x, pos_x: nx, pos_y: ny } : x)))
+        supabase
+          .from(isText ? 'board_texts' : 'tasks')
+          .update({ pos_x: nx, pos_y: ny })
+          .eq('id', n.id)
+          .then(({ error }) => error && console.error(error))
+      }
+    }
+    function onKey(e) {
+      const el = document.activeElement
+      const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+
+      if (e.key === 'Escape') {
+        if (ui.current.showHelp) fns.current.setShowHelp(false)
+        else if (ui.current.showPlanning) fns.current.setShowPlanning(false)
+        else if (ui.current.openId) fns.current.setOpenId(null)
+        return
+      }
+      if (typing || ui.current.showPlanning) return
+
+      if (e.key.startsWith('Arrow')) {
+        const sel = nodesRef.current.filter((n) => n.selected)
+        if (!sel.length) return
+        e.preventDefault()
+        const d = e.shiftKey ? 1 : 10
+        nudge(sel, e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0)
+        return
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const k = e.key.toLowerCase()
+      if (k === 'n') {
+        e.preventDefault()
+        fns.current.addTask(false)
+      } else if (k === 'm') {
+        e.preventDefault()
+        fns.current.addTask(true)
+      } else if (k === 'f') {
+        e.preventDefault()
+        fns.current.fitView({ duration: 500, padding: 0.2 })
+      } else if (k === 'p') {
+        e.preventDefault()
+        fns.current.setShowPlanning(true)
+      } else if (e.key === '?') {
+        e.preventDefault()
+        fns.current.setShowHelp((h) => !h)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   // ---- Load everything for this project ---------------------------------
   useEffect(() => {
     let active = true
@@ -136,13 +205,13 @@ function Board({ project, legend }) {
     ;(async () => {
       const { data: t } = await supabase
         .from('tasks')
-        .select('id, title, notes, status, color, task_date, week_start, plan_month, pos_x, pos_y, position')
+        .select('id, title, notes, status, color, task_date, week_start, plan_month, checklist, is_milestone, pos_x, pos_y, position')
         .eq('project_id', project.id)
         .order('position')
       const taskList = t ?? []
       const ids = taskList.map((x) => x.id)
 
-      const [depsRes, textsRes, strokesRes] = await Promise.all([
+      const [depsRes, textsRes, strokesRes, attachRes] = await Promise.all([
         ids.length
           ? supabase.from('task_dependencies').select('id, task_id, depends_on_id').in('task_id', ids)
           : Promise.resolve({ data: [] }),
@@ -152,9 +221,15 @@ function Board({ project, legend }) {
           .select('id, points, color, width')
           .eq('project_id', project.id)
           .order('created_at'),
+        ids.length
+          ? supabase.from('task_attachments').select('task_id').in('task_id', ids)
+          : Promise.resolve({ data: [] }),
       ])
 
       if (!active) return
+      const counts = {}
+      for (const a of attachRes.data ?? []) counts[a.task_id] = (counts[a.task_id] ?? 0) + 1
+      setImgCounts(counts)
       setTasks(taskList)
       setDeps(depsRes.data ?? [])
       setTexts(textsRes.data ?? [])
@@ -194,10 +269,14 @@ function Board({ project, legend }) {
   useEffect(() => {
     const taskNodes = tasks.map((task, i) => ({
       id: task.id,
-      type: 'task',
+      type: task.is_milestone ? 'milestone' : 'task',
       position:
         task.pos_x != null && task.pos_y != null ? { x: task.pos_x, y: task.pos_y } : fallbackPos(i),
-      data: { task, state: states.get(task.id) ?? { remaining: [], ready: false, blocked: false } },
+      data: {
+        task,
+        state: states.get(task.id) ?? { remaining: [], ready: false, blocked: false },
+        imgCount: imgCounts[task.id] ?? 0,
+      },
     }))
 
     const textNodes = texts.map((t) => ({
@@ -209,7 +288,7 @@ function Board({ project, legend }) {
     }))
 
     setNodes([...taskNodes, ...textNodes])
-  }, [tasks, texts, states, commitText, setNodes])
+  }, [tasks, texts, states, commitText, setNodes, imgCounts])
 
   useEffect(() => {
     setEdges(
@@ -224,25 +303,32 @@ function Board({ project, legend }) {
   }, [deps, states, setEdges, dark])
 
   const readyCount = useMemo(
-    () => tasks.filter((t) => states.get(t.id)?.ready).length,
+    () => tasks.filter((t) => !t.is_milestone && states.get(t.id)?.ready).length,
     [tasks, states],
   )
 
+  const onAttachmentsChange = useCallback((taskId, count) => {
+    setImgCounts((m) => ({ ...m, [taskId]: count }))
+  }, [])
+
   // ---- Tasks ------------------------------------------------------------
-  async function addTask() {
+  async function addTask(milestone = false) {
     const pos = fallbackPos(live.current.tasks.length)
     const { data } = await supabase
       .from('tasks')
       .insert({
         user_id: user.id,
         project_id: project.id,
-        title: 'Nouvelle tâche',
+        title: milestone ? 'Nouveau jalon' : 'Nouvelle tâche',
         status: 'todo',
+        is_milestone: milestone,
         position: live.current.tasks.length,
         pos_x: pos.x,
         pos_y: pos.y,
       })
-      .select('id, title, notes, status, pos_x, pos_y, position')
+      .select(
+        'id, title, notes, status, color, task_date, week_start, plan_month, checklist, is_milestone, pos_x, pos_y, position',
+      )
       .single()
     if (data) {
       setTasks((t) => [...t, data])
@@ -358,6 +444,8 @@ function Board({ project, legend }) {
                   notes: src.notes,
                   status: src.status,
                   color: src.color,
+                  is_milestone: src.is_milestone,
+                  checklist: src.checklist ?? [],
                   position: live.current.tasks.length + i,
                   pos_x: n.position.x,
                   pos_y: n.position.y,
@@ -370,7 +458,7 @@ function Board({ project, legend }) {
             const { data } = await supabase
               .from('tasks')
               .insert(taskCopies)
-              .select('id, title, notes, status, color, task_date, week_start, plan_month, pos_x, pos_y, position')
+              .select('id, title, notes, status, color, task_date, week_start, plan_month, checklist, is_milestone, pos_x, pos_y, position')
             if (data) {
               setTasks((t) => [...t, ...data])
               undoIds.tasks = data.map((d) => d.id)
@@ -664,8 +752,16 @@ function Board({ project, legend }) {
             <CalendarIcon size={16} /> Planning
           </button>
           <button
-            onClick={addTask}
+            onClick={() => addTask(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface text-fg text-sm font-medium border border-line hover:bg-surface2 active:scale-95 transition"
+            title="Nouveau jalon (M)"
+          >
+            <FlagIcon size={15} /> Jalon
+          </button>
+          <button
+            onClick={() => addTask(false)}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-accent text-accent-fg text-sm font-medium shadow-card hover:opacity-90 active:scale-95 transition"
+            title="Nouvelle tâche (N)"
           >
             <PlusIcon size={16} /> Tâche
           </button>
@@ -696,7 +792,7 @@ function Board({ project, legend }) {
                   <br className="hidden sm:block" /> on reliera et on datera plus tard.
                 </p>
                 <button
-                  onClick={addTask}
+                  onClick={() => addTask(false)}
                   className="px-5 py-2.5 rounded-lg bg-accent text-accent-fg text-sm font-medium shadow-card pointer-events-auto active:scale-95 transition"
                 >
                   Première tâche
@@ -780,7 +876,41 @@ function Board({ project, legend }) {
           onSave={(patch) => saveTask(openTask.id, patch)}
           onDelete={deleteTask}
           onRemoveDep={removeDep}
+          onAttachmentsChange={onAttachmentsChange}
         />
+      )}
+
+      {showHelp && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 animate-overlay-in"
+          onClick={() => setShowHelp(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-surface border border-line rounded-2xl shadow-soft p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-fg mb-4">Raccourcis clavier</h3>
+            <ul className="space-y-2 text-sm">
+              {[
+                ['N', 'Nouvelle tâche'],
+                ['M', 'Nouveau jalon'],
+                ['P', 'Ouvrir le planning'],
+                ['F', 'Recentrer le board'],
+                ['Suppr', 'Supprimer la sélection'],
+                ['↑ ↓ ← →', 'Déplacer la sélection (Maj = fin)'],
+                ['Ctrl/⌘ + Z', 'Annuler'],
+                ['Alt + glisser', 'Dupliquer'],
+                ['Échap', 'Fermer'],
+              ].map(([k, d]) => (
+                <li key={k} className="flex items-center justify-between gap-4">
+                  <span className="text-muted">{d}</span>
+                  <kbd className="px-2 py-0.5 rounded-md bg-surface2 border border-line text-xs text-fg font-medium">{k}</kbd>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-faint mt-4">Astuce : appuie sur ? pour rouvrir cette fenêtre.</p>
+          </div>
+        </div>
       )}
     </div>
   )
