@@ -228,25 +228,32 @@ function Board({ project, legend }) {
           .eq('project_id', project.id)
           .order('created_at'),
         ids.length
-          ? supabase.from('task_attachments').select('task_id, storage_path, created_at').in('task_id', ids).order('created_at')
+          ? supabase
+              .from('task_attachments')
+              .select('task_id, storage_path, width, height, created_at')
+              .in('task_id', ids)
+              .order('created_at')
           : Promise.resolve({ data: [] }),
       ])
 
-      // First image per task + count → cover thumbnails on the nodes.
-      const firstPath = {}
+      // First image per task (+ its ratio + count) → cover thumbnails on the nodes.
+      const first = {}
       const counts = {}
       for (const a of attachRes.data ?? []) {
         counts[a.task_id] = (counts[a.task_id] ?? 0) + 1
-        if (!firstPath[a.task_id]) firstPath[a.task_id] = a.storage_path
+        if (!first[a.task_id]) first[a.task_id] = a
       }
-      const paths = Object.values(firstPath)
+      const paths = Object.values(first).map((a) => a.storage_path)
       let urlByPath = {}
       if (paths.length) {
         const { data: signed } = await supabase.storage.from('task-images').createSignedUrls(paths, 21600)
         for (const s of signed ?? []) if (s.signedUrl) urlByPath[s.path] = s.signedUrl
       }
       const cov = {}
-      for (const tid of Object.keys(firstPath)) cov[tid] = { url: urlByPath[firstPath[tid]], count: counts[tid] }
+      for (const tid of Object.keys(first)) {
+        const a = first[tid]
+        cov[tid] = { url: urlByPath[a.storage_path], count: counts[tid], ratio: a.width && a.height ? a.width / a.height : null }
+      }
 
       if (!active) return
       setCovers(cov)
@@ -296,6 +303,7 @@ function Board({ project, legend }) {
         task,
         state: states.get(task.id) ?? { remaining: [], ready: false, blocked: false },
         cover: covers[task.id]?.url ?? null,
+        coverRatio: covers[task.id]?.ratio ?? null,
         imgCount: covers[task.id]?.count ?? 0,
       },
     }))
@@ -328,10 +336,10 @@ function Board({ project, legend }) {
     [tasks, states],
   )
 
-  const onAttachmentsChange = useCallback((taskId, count, coverUrl) => {
+  const onAttachmentsChange = useCallback((taskId, count, coverUrl, coverRatio) => {
     setCovers((m) => {
       const next = { ...m }
-      if (count > 0) next[taskId] = { url: coverUrl, count }
+      if (count > 0) next[taskId] = { url: coverUrl, count, ratio: coverRatio ?? null }
       else delete next[taskId]
       return next
     })

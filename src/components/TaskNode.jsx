@@ -59,6 +59,7 @@ export default function TaskNode({ data, selected }) {
   }
 
   const cover = data.cover
+  const ratio = data.coverRatio || 1.5
 
   return (
     <div
@@ -70,8 +71,8 @@ export default function TaskNode({ data, selected }) {
       <Handle type="target" position={Position.Left} className="!w-2.5 !h-2.5 !bg-app !border !border-faint !z-10" />
 
       {cover && (
-        <div className="relative">
-          <img src={cover} alt="" className="w-full h-24 object-cover" draggable={false} />
+        <div className="relative bg-black/5" style={{ aspectRatio: String(ratio), maxHeight: 240 }}>
+          <img src={cover} alt="" className="w-full h-full object-cover" draggable={false} />
           {imgCount > 1 && (
             <span className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-0.5 text-[10px] font-medium text-white bg-black/55 rounded px-1.5 py-0.5">
               <ImageIcon size={10} /> {imgCount}
