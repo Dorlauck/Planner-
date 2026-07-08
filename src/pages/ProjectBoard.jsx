@@ -617,7 +617,7 @@ function Board({ project, legend }) {
   )
 
   const onNodeClick = useCallback((_e, node) => {
-    if (node.type === 'task') setOpenId(node.id)
+    if (node.type !== 'text') setOpenId(node.id)
   }, [])
 
   // Click on empty board in text mode → drop a new free-text annotation.
