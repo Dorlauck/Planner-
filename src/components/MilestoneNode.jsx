@@ -19,7 +19,7 @@ export default function MilestoneNode({ data, selected }) {
       <Handle type="target" position={Position.Left} className="!w-2.5 !h-2.5 !bg-app !border !border-faint !z-10" />
 
       {cover && (
-        <div className="relative bg-black/5" style={{ aspectRatio: String(ratio), maxHeight: 240 }}>
+        <div className="relative" style={{ aspectRatio: String(ratio), maxHeight: 240 }}>
           <img src={cover} alt="" className="w-full h-full object-cover" draggable={false} />
         </div>
       )}

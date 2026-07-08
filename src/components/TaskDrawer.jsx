@@ -169,10 +169,10 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
     try {
       const added = []
       for (const file of images) {
-        const { blob, width, height } = await compressImage(file)
-        const path = `${user.id}/${task.id}/${uid()}.jpg`
+        const { blob, width, height, type, ext } = await compressImage(file)
+        const path = `${user.id}/${task.id}/${uid()}.${ext}`
         const { error: upErr } = await supabase.storage.from('task-images').upload(path, blob, {
-          contentType: 'image/jpeg',
+          contentType: type,
           upsert: false,
         })
         if (upErr) {
