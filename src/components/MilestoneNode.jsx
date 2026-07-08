@@ -4,7 +4,7 @@ import { FlagIcon } from './icons'
 // A milestone / goal node. Dependencies point into it; it's "reached" once all
 // of them are done. Visually distinct (pill) so goals stand out from tasks.
 export default function MilestoneNode({ data, selected }) {
-  const { task, state } = data
+  const { task, state, cover } = data
   const remaining = state.remaining.length
   const reached = remaining === 0
 
@@ -17,7 +17,11 @@ export default function MilestoneNode({ data, selected }) {
       } ${selected ? 'ring-2 ring-offset-1 ring-accent/40' : ''}`}
     >
       <Handle type="target" position={Position.Left} className="!w-2.5 !h-2.5 !bg-app !border !border-faint" />
-      <FlagIcon size={15} />
+      {cover ? (
+        <img src={cover} alt="" draggable={false} className="w-7 h-7 rounded-full object-cover shrink-0 -ml-1 border border-black/10" />
+      ) : (
+        <FlagIcon size={15} />
+      )}
       <div className="min-w-0">
         <p className="text-[14px] font-semibold leading-tight truncate max-w-[180px]">{task.title}</p>
         <p className="text-[10px] uppercase tracking-wider font-medium opacity-80">

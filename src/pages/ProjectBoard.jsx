@@ -48,7 +48,7 @@ function Board({ project, legend }) {
   const [openId, setOpenId] = useState(null)
   const [showPlanning, setShowPlanning] = useState(false)
   const [showToday, setShowToday] = useState(false)
-  const [imgCounts, setImgCounts] = useState({})
+  const [covers, setCovers] = useState({}) // taskId -> { url, count }
   const [showHelp, setShowHelp] = useState(false)
 
   const [mode, setMode] = useState('select') // 'select' | 'text' | 'draw'
@@ -228,14 +228,28 @@ function Board({ project, legend }) {
           .eq('project_id', project.id)
           .order('created_at'),
         ids.length
-          ? supabase.from('task_attachments').select('task_id').in('task_id', ids)
+          ? supabase.from('task_attachments').select('task_id, storage_path, created_at').in('task_id', ids).order('created_at')
           : Promise.resolve({ data: [] }),
       ])
 
-      if (!active) return
+      // First image per task + count → cover thumbnails on the nodes.
+      const firstPath = {}
       const counts = {}
-      for (const a of attachRes.data ?? []) counts[a.task_id] = (counts[a.task_id] ?? 0) + 1
-      setImgCounts(counts)
+      for (const a of attachRes.data ?? []) {
+        counts[a.task_id] = (counts[a.task_id] ?? 0) + 1
+        if (!firstPath[a.task_id]) firstPath[a.task_id] = a.storage_path
+      }
+      const paths = Object.values(firstPath)
+      let urlByPath = {}
+      if (paths.length) {
+        const { data: signed } = await supabase.storage.from('task-images').createSignedUrls(paths, 21600)
+        for (const s of signed ?? []) if (s.signedUrl) urlByPath[s.path] = s.signedUrl
+      }
+      const cov = {}
+      for (const tid of Object.keys(firstPath)) cov[tid] = { url: urlByPath[firstPath[tid]], count: counts[tid] }
+
+      if (!active) return
+      setCovers(cov)
       setTasks(taskList)
       setDeps(depsRes.data ?? [])
       setTexts(textsRes.data ?? [])
@@ -281,7 +295,8 @@ function Board({ project, legend }) {
       data: {
         task,
         state: states.get(task.id) ?? { remaining: [], ready: false, blocked: false },
-        imgCount: imgCounts[task.id] ?? 0,
+        cover: covers[task.id]?.url ?? null,
+        imgCount: covers[task.id]?.count ?? 0,
       },
     }))
 
@@ -294,7 +309,7 @@ function Board({ project, legend }) {
     }))
 
     setNodes([...taskNodes, ...textNodes])
-  }, [tasks, texts, states, commitText, setNodes, imgCounts])
+  }, [tasks, texts, states, commitText, setNodes, covers])
 
   useEffect(() => {
     setEdges(
@@ -313,8 +328,13 @@ function Board({ project, legend }) {
     [tasks, states],
   )
 
-  const onAttachmentsChange = useCallback((taskId, count) => {
-    setImgCounts((m) => ({ ...m, [taskId]: count }))
+  const onAttachmentsChange = useCallback((taskId, count, coverUrl) => {
+    setCovers((m) => {
+      const next = { ...m }
+      if (count > 0) next[taskId] = { url: coverUrl, count }
+      else delete next[taskId]
+      return next
+    })
   }, [])
 
   // ---- Tasks ------------------------------------------------------------

@@ -190,7 +190,7 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
       if (added.length) {
         setAttachments((a) => {
           const next = [...a, ...added]
-          onAttachmentsChange?.(task.id, next.length)
+          onAttachmentsChange?.(task.id, next.length, next[0]?.url)
           return next
         })
       }

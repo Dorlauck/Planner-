@@ -58,52 +58,67 @@ export default function TaskNode({ data, selected }) {
     }
   }
 
+  const cover = data.cover
+
   return (
     <div
-      className={`animate-node-in relative w-60 rounded-xl border px-3.5 py-2.5 shadow-card transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-soft ${
+      className={`animate-node-in relative w-60 rounded-xl border overflow-hidden shadow-card transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-soft ${
         done ? 'opacity-55' : ''
       } ${selected ? 'ring-2 ring-offset-1 ring-accent/40' : ''}`}
       style={{ background: t.bg, borderColor: t.border, color: t.text }}
     >
-      <Handle type="target" position={Position.Left} className="!w-2.5 !h-2.5 !bg-app !border !border-faint" />
+      <Handle type="target" position={Position.Left} className="!w-2.5 !h-2.5 !bg-app !border !border-faint !z-10" />
 
-      <div className="flex items-center justify-between mb-1">
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium" style={{ color: t.muted }}>
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${statusKey === 'ready' ? 'animate-pulse-soft' : ''}`}
-            style={{ background: st.dot }}
-          />
-          {st.label}
-          {statusKey === 'blocked' && state.remaining.length > 0 && <span>· {state.remaining.length}</span>}
-        </span>
-        <span className="inline-flex items-center gap-2" style={{ color: t.muted }}>
-          {checklist.length > 0 && (
-            <span className="inline-flex items-center gap-0.5 text-[11px]">
-              <CheckIcon size={12} />
-              {checkDone}/{checklist.length}
+      {cover && (
+        <div className="relative">
+          <img src={cover} alt="" className="w-full h-24 object-cover" draggable={false} />
+          {imgCount > 1 && (
+            <span className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-0.5 text-[10px] font-medium text-white bg-black/55 rounded px-1.5 py-0.5">
+              <ImageIcon size={10} /> {imgCount}
             </span>
           )}
-          {imgCount > 0 && (
-            <span className="inline-flex items-center gap-0.5 text-[11px]">
-              <ImageIcon size={12} />
-              {imgCount}
-            </span>
-          )}
-          {task.notes?.trim() && <NoteIcon size={13} />}
-        </span>
-      </div>
-
-      <p className="text-[15px] font-medium leading-snug" style={{ textDecoration: done ? 'line-through' : 'none' }}>
-        {task.title}
-      </p>
-
-      {dueLabel && (
-        <div className="mt-1.5 text-[11px] font-medium" style={{ color: dueColor }}>
-          {dueLabel}
         </div>
       )}
 
-      <Handle type="source" position={Position.Right} className="!w-2.5 !h-2.5 !bg-app !border !border-faint" />
+      <div className="px-3.5 py-2.5">
+        <div className="flex items-center justify-between mb-1">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium" style={{ color: t.muted }}>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${statusKey === 'ready' ? 'animate-pulse-soft' : ''}`}
+              style={{ background: st.dot }}
+            />
+            {st.label}
+            {statusKey === 'blocked' && state.remaining.length > 0 && <span>· {state.remaining.length}</span>}
+          </span>
+          <span className="inline-flex items-center gap-2" style={{ color: t.muted }}>
+            {checklist.length > 0 && (
+              <span className="inline-flex items-center gap-0.5 text-[11px]">
+                <CheckIcon size={12} />
+                {checkDone}/{checklist.length}
+              </span>
+            )}
+            {!cover && imgCount > 0 && (
+              <span className="inline-flex items-center gap-0.5 text-[11px]">
+                <ImageIcon size={12} />
+                {imgCount}
+              </span>
+            )}
+            {task.notes?.trim() && <NoteIcon size={13} />}
+          </span>
+        </div>
+
+        <p className="text-[15px] font-medium leading-snug" style={{ textDecoration: done ? 'line-through' : 'none' }}>
+          {task.title}
+        </p>
+
+        {dueLabel && (
+          <div className="mt-1.5 text-[11px] font-medium" style={{ color: dueColor }}>
+            {dueLabel}
+          </div>
+        )}
+      </div>
+
+      <Handle type="source" position={Position.Right} className="!w-2.5 !h-2.5 !bg-app !border !border-faint !z-10" />
     </div>
   )
 }
