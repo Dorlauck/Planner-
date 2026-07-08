@@ -19,10 +19,11 @@ import MilestoneNode from '../components/MilestoneNode'
 import TaskDrawer from '../components/TaskDrawer'
 import DrawingLayer from '../components/DrawingLayer'
 import PlanningView from '../components/PlanningView'
+import TodayView from '../components/TodayView'
 import BoardToolbar, { PEN_COLORS } from '../components/BoardToolbar'
 import { computeTaskStates, wouldCreateCycle } from '../lib/graph'
 import { useTheme } from '../contexts/ThemeContext'
-import { CalendarIcon, PlusIcon, FlagIcon } from '../components/icons'
+import { CalendarIcon, PlusIcon, FlagIcon, TodayIcon } from '../components/icons'
 
 const nodeTypes = { task: TaskNode, text: TextNode, milestone: MilestoneNode }
 const STROKE_WIDTH = 3 // flow-space thickness (scales with zoom)
@@ -46,6 +47,7 @@ function Board({ project, legend }) {
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState(null)
   const [showPlanning, setShowPlanning] = useState(false)
+  const [showToday, setShowToday] = useState(false)
   const [imgCounts, setImgCounts] = useState({})
   const [showHelp, setShowHelp] = useState(false)
 
@@ -132,9 +134,9 @@ function Board({ project, legend }) {
 
   // ---- Keyboard shortcuts ----------------------------------------------
   const ui = useRef({})
-  ui.current = { showPlanning, showHelp, openId }
+  ui.current = { showPlanning, showToday, showHelp, openId }
   const fns = useRef({})
-  fns.current = { addTask, fitView, setShowPlanning, setOpenId, setShowHelp }
+  fns.current = { addTask, fitView, setShowPlanning, setShowToday, setOpenId, setShowHelp }
   useEffect(() => {
     function nudge(sel, dx, dy) {
       for (const n of sel) {
@@ -159,11 +161,12 @@ function Board({ project, legend }) {
 
       if (e.key === 'Escape') {
         if (ui.current.showHelp) fns.current.setShowHelp(false)
+        else if (ui.current.showToday) fns.current.setShowToday(false)
         else if (ui.current.showPlanning) fns.current.setShowPlanning(false)
         else if (ui.current.openId) fns.current.setOpenId(null)
         return
       }
-      if (typing || ui.current.showPlanning) return
+      if (typing || ui.current.showPlanning || ui.current.showToday) return
 
       if (e.key.startsWith('Arrow')) {
         const sel = nodesRef.current.filter((n) => n.selected)
@@ -187,6 +190,9 @@ function Board({ project, legend }) {
       } else if (k === 'p') {
         e.preventDefault()
         fns.current.setShowPlanning(true)
+      } else if (k === 'j') {
+        e.preventDefault()
+        fns.current.setShowToday(true)
       } else if (e.key === '?') {
         e.preventDefault()
         fns.current.setShowHelp((h) => !h)
@@ -748,8 +754,16 @@ function Board({ project, legend }) {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
+            onClick={() => setShowToday(true)}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-surface text-fg text-sm font-medium border border-line hover:bg-surface2 active:scale-95 transition"
+            title="Aujourd'hui (J)"
+          >
+            <TodayIcon size={16} /> Aujourd'hui
+          </button>
+          <button
             onClick={() => setShowPlanning(true)}
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-surface text-fg text-sm font-medium border border-line hover:bg-surface2 active:scale-95 transition"
+            title="Planning (P)"
           >
             <CalendarIcon size={16} /> Planning
           </button>
@@ -868,6 +882,16 @@ function Board({ project, legend }) {
         />
       )}
 
+      {showToday && (
+        <TodayView
+          tasks={tasks}
+          states={states}
+          onClose={() => setShowToday(false)}
+          onSchedule={saveTask}
+          onOpenTask={setOpenId}
+        />
+      )}
+
       {openTask && (
         <TaskDrawer
           task={openTask}
@@ -896,6 +920,7 @@ function Board({ project, legend }) {
               {[
                 ['N', 'Nouvelle tâche'],
                 ['M', 'Nouveau jalon'],
+                ['J', "Vue Aujourd'hui"],
                 ['P', 'Ouvrir le planning'],
                 ['F', 'Recentrer le board'],
                 ['Suppr', 'Supprimer la sélection'],

@@ -11,28 +11,30 @@ import {
   format,
 } from 'date-fns'
 import { fr } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight } from './icons'
+import { ChevronLeft, ChevronRight, RepeatIcon } from './icons'
+import { buildItems, poolItems, overdueItems, dayItems, setSubDate, toggleSub } from '../lib/planning'
 
 const iso = (d) => format(d, 'yyyy-MM-dd')
 const monday = (d) => startOfWeek(d, { weekStartsOn: 1 })
 
-function Chip({ item, compact, onToggle, onOpen }) {
+function Chip({ item, day, compact, onToggle, onOpen }) {
+  const draggable = !item.recur
   return (
     <div
-      draggable
+      draggable={draggable}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', JSON.stringify({ kind: item.kind, taskId: item.taskId, subId: item.subId }))
         e.dataTransfer.effectAllowed = 'move'
       }}
-      className={`group flex items-center gap-1.5 bg-surface border border-line rounded-md cursor-grab active:cursor-grabbing hover:border-faint transition ${
-        compact ? 'px-1.5 py-0.5' : 'px-2 py-1.5'
-      }`}
+      className={`group flex items-center gap-1.5 bg-surface border border-line rounded-md transition hover:border-faint ${
+        draggable ? 'cursor-grab active:cursor-grabbing' : ''
+      } ${compact ? 'px-1.5 py-0.5' : 'px-2 py-1.5'}`}
       title={item.taskTitle ? `${item.taskTitle} — ${item.text}` : item.text}
     >
       <button
         onClick={(e) => {
           e.stopPropagation()
-          onToggle(item)
+          onToggle(item, day)
         }}
         className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition ${
           item.done ? 'bg-accent border-accent text-accent-fg' : 'border-faint'
@@ -44,18 +46,14 @@ function Chip({ item, compact, onToggle, onOpen }) {
           </svg>
         )}
       </button>
-      <span
-        className="w-1.5 h-1.5 rounded-full shrink-0"
-        style={{ backgroundColor: item.color || 'rgb(var(--faint))' }}
-      />
+      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color || 'rgb(var(--faint))' }} />
       <span
         onClick={() => onOpen?.(item.taskId)}
-        className={`flex-1 min-w-0 truncate ${compact ? 'text-[11px]' : 'text-[13px]'} ${
-          item.done ? 'line-through text-faint' : 'text-fg'
-        }`}
+        className={`flex-1 min-w-0 truncate ${compact ? 'text-[11px]' : 'text-[13px]'} ${item.done ? 'line-through text-faint' : 'text-fg'}`}
       >
         {item.text}
       </span>
+      {item.recur && <RepeatIcon size={11} className="text-faint shrink-0" />}
     </div>
   )
 }
@@ -94,60 +92,10 @@ export default function PlanningView({ tasks, states, onClose, onSchedule, onOpe
   const today = iso(new Date())
 
   const tasksById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])
+  const items = useMemo(() => buildItems(tasks, states), [tasks, states])
+  const pool = poolItems(items)
+  const overdue = overdueItems(items, today)
 
-  // Build the plannable items = actionable subtasks of *unblocked* tasks (or the
-  // task itself if it has no subtasks). Milestones are excluded.
-  const items = useMemo(() => {
-    const out = []
-    for (const t of tasks) {
-      if (t.is_milestone) continue
-      const blocked = states?.get(t.id)?.blocked ?? false
-      const list = Array.isArray(t.checklist) ? t.checklist : []
-      if (list.length) {
-        for (const c of list) {
-          out.push({
-            key: `s:${t.id}:${c.id}`,
-            kind: 'sub',
-            taskId: t.id,
-            subId: c.id,
-            text: c.text,
-            color: t.color,
-            taskTitle: t.title,
-            date: c.date || null,
-            done: !!c.done,
-            blocked,
-          })
-        }
-      } else {
-        out.push({
-          key: `t:${t.id}`,
-          kind: 'task',
-          taskId: t.id,
-          text: t.title,
-          color: t.color,
-          taskTitle: null,
-          date: t.task_date || null,
-          done: t.status === 'done',
-          blocked,
-        })
-      }
-    }
-    return out
-  }, [tasks, states])
-
-  const pool = items.filter((i) => !i.date && !i.done && !i.blocked)
-  const overdue = items.filter((i) => i.date && i.date < today && !i.done)
-  const itemsByDay = useMemo(() => {
-    const m = new Map()
-    for (const i of items) {
-      if (!i.date) continue
-      if (!m.has(i.date)) m.set(i.date, [])
-      m.get(i.date).push(i)
-    }
-    return m
-  }, [items])
-
-  // Backlog grouped by parent task.
   const poolGroups = useMemo(() => {
     const groups = []
     const byTask = new Map()
@@ -162,45 +110,28 @@ export default function PlanningView({ tasks, states, onClose, onSchedule, onOpe
     return groups
   }, [pool, tasksById])
 
-  // ---- Scheduling -------------------------------------------------------
   function schedule(payload, dateISO) {
     const t = tasksById.get(payload.taskId)
     if (!t) return
-    if (payload.kind === 'sub') {
-      const list = (Array.isArray(t.checklist) ? t.checklist : []).map((c) =>
-        c.id === payload.subId ? { ...c, date: dateISO } : c,
-      )
-      onSchedule(payload.taskId, { checklist: list })
-    } else {
-      onSchedule(payload.taskId, { task_date: dateISO })
-    }
+    if (payload.kind === 'sub') onSchedule(payload.taskId, { checklist: setSubDate(t.checklist || [], payload.subId, dateISO) })
+    else onSchedule(payload.taskId, { task_date: dateISO })
   }
 
-  function toggleDone(item) {
+  function toggle(item, dayISO) {
     const t = tasksById.get(item.taskId)
     if (!t) return
-    if (item.kind === 'sub') {
-      const list = (Array.isArray(t.checklist) ? t.checklist : []).map((c) =>
-        c.id === item.subId ? { ...c, done: !c.done } : c,
-      )
-      onSchedule(item.taskId, { checklist: list })
-    } else {
-      onSchedule(item.taskId, { status: item.done ? 'todo' : 'done' })
-    }
+    if (item.kind === 'sub') onSchedule(item.taskId, { checklist: toggleSub(t.checklist || [], item.subId, dayISO || item.instanceDate) })
+    else onSchedule(item.taskId, { status: item.done ? 'todo' : 'done' })
   }
 
   function rolloverOverdue() {
     for (const i of overdue) schedule({ kind: i.kind, taskId: i.taskId, subId: i.subId }, today)
   }
 
-  // ---- Period label + nav ----------------------------------------------
   const step = (dir) => setCursor((c) => (view === 'week' ? addWeeks(c, dir) : addMonths(c, dir)))
   const periodLabel =
-    view === 'week'
-      ? `Semaine du ${format(monday(cursor), 'd MMM', { locale: fr })}`
-      : format(cursor, 'MMMM yyyy', { locale: fr })
+    view === 'week' ? `Semaine du ${format(monday(cursor), 'd MMM', { locale: fr })}` : format(cursor, 'MMMM yyyy', { locale: fr })
 
-  // ---- Calendar ---------------------------------------------------------
   let calendar
   if (view === 'week') {
     const days = eachDayOfInterval({ start: monday(cursor), end: endOfWeek(cursor, { weekStartsOn: 1 }) })
@@ -208,29 +139,21 @@ export default function PlanningView({ tasks, states, onClose, onSchedule, onOpe
       <div className="grid grid-cols-7 gap-2 h-full">
         {days.map((day) => {
           const key = iso(day)
-          const dayItems = itemsByDay.get(key) ?? []
+          const dayList = dayItems(items, key)
           const isToday = key === today
           return (
             <Drop
               key={key}
               onDropItem={(p) => schedule(p, key)}
-              className={`flex flex-col min-h-0 rounded-xl border p-2 ${
-                isToday ? 'border-accent/50 bg-surface' : 'border-line bg-surface2/50'
-              }`}
+              className={`flex flex-col min-h-0 rounded-xl border p-2 ${isToday ? 'border-accent/50 bg-surface' : 'border-line bg-surface2/50'}`}
             >
               <div className="flex items-center justify-between mb-2">
-                <span className={`text-[11px] font-semibold capitalize ${isToday ? 'text-fg' : 'text-muted'}`}>
-                  {format(day, 'EEE d', { locale: fr })}
-                </span>
-                {dayItems.length > 0 && (
-                  <span className={`text-[10px] ${dayItems.length > 6 ? 'text-amber-500' : 'text-faint'}`}>
-                    {dayItems.length}
-                  </span>
-                )}
+                <span className={`text-[11px] font-semibold capitalize ${isToday ? 'text-fg' : 'text-muted'}`}>{format(day, 'EEE d', { locale: fr })}</span>
+                {dayList.length > 0 && <span className={`text-[10px] ${dayList.length > 6 ? 'text-amber-500' : 'text-faint'}`}>{dayList.length}</span>}
               </div>
               <div className="flex-1 overflow-y-auto scrollbar-thin space-y-1">
-                {dayItems.map((i) => (
-                  <Chip key={i.key} item={i} onToggle={toggleDone} onOpen={onOpenTask} />
+                {dayList.map((i) => (
+                  <Chip key={i.key} item={i} day={key} onToggle={toggle} onOpen={onOpenTask} />
                 ))}
               </div>
             </Drop>
@@ -254,30 +177,22 @@ export default function PlanningView({ tasks, states, onClose, onSchedule, onOpe
         <div className="grid grid-cols-7 gap-2 flex-1 min-h-0" style={{ gridAutoRows: '1fr' }}>
           {days.map((day) => {
             const key = iso(day)
-            const dayItems = itemsByDay.get(key) ?? []
+            const dayList = dayItems(items, key)
             const inMonth = isSameMonth(day, cursor)
             const isToday = key === today
             return (
               <Drop
                 key={key}
                 onDropItem={(p) => schedule(p, key)}
-                className={`flex flex-col min-h-0 rounded-lg border p-1.5 ${
-                  isToday ? 'border-accent/50 bg-surface' : 'border-line'
-                } ${inMonth ? 'bg-surface2/40' : 'bg-transparent opacity-50'}`}
+                className={`flex flex-col min-h-0 rounded-lg border p-1.5 ${isToday ? 'border-accent/50 bg-surface' : 'border-line'} ${inMonth ? 'bg-surface2/40' : 'bg-transparent opacity-50'}`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className={`text-[11px] font-medium ${isToday ? 'text-fg font-semibold' : 'text-muted'}`}>
-                    {format(day, 'd')}
-                  </span>
-                  {dayItems.length > 0 && (
-                    <span className={`text-[9px] ${dayItems.length > 6 ? 'text-amber-500' : 'text-faint'}`}>
-                      {dayItems.length}
-                    </span>
-                  )}
+                  <span className={`text-[11px] ${isToday ? 'text-fg font-semibold' : 'text-muted font-medium'}`}>{format(day, 'd')}</span>
+                  {dayList.length > 0 && <span className={`text-[9px] ${dayList.length > 6 ? 'text-amber-500' : 'text-faint'}`}>{dayList.length}</span>}
                 </div>
                 <div className="flex-1 overflow-y-auto scrollbar-thin space-y-0.5">
-                  {dayItems.map((i) => (
-                    <Chip key={i.key} item={i} compact onToggle={toggleDone} onOpen={onOpenTask} />
+                  {dayList.map((i) => (
+                    <Chip key={i.key} item={i} day={key} compact onToggle={toggle} onOpen={onOpenTask} />
                   ))}
                 </div>
               </Drop>
@@ -301,9 +216,7 @@ export default function PlanningView({ tasks, states, onClose, onSchedule, onOpe
               <button
                 key={v.id}
                 onClick={() => setView(v.id)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition active:scale-95 ${
-                  view === v.id ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
-                }`}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition active:scale-95 ${view === v.id ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'}`}
               >
                 {v.label}
               </button>
@@ -329,7 +242,6 @@ export default function PlanningView({ tasks, states, onClose, onSchedule, onOpe
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Backlog */}
         <Drop onDropItem={(p) => schedule(p, null)} className="w-72 shrink-0 border-r border-line bg-surface/40 p-4 overflow-y-auto scrollbar-thin">
           {overdue.length > 0 && (
             <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
@@ -355,7 +267,7 @@ export default function PlanningView({ tasks, states, onClose, onSchedule, onOpe
                   </div>
                   <div className="space-y-1">
                     {g.items.map((i) => (
-                      <Chip key={i.key} item={i} onToggle={toggleDone} onOpen={onOpenTask} />
+                      <Chip key={i.key} item={i} day={null} onToggle={toggle} onOpen={onOpenTask} />
                     ))}
                   </div>
                 </div>

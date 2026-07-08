@@ -104,3 +104,19 @@ export const TrashIcon = (p) => (
     <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
   </Svg>
 )
+
+export const RepeatIcon = (p) => (
+  <Svg {...p}>
+    <path d="M17 3l3 3-3 3" />
+    <path d="M20 6H8a4 4 0 0 0-4 4v1M7 21l-3-3 3-3" />
+    <path d="M4 18h12a4 4 0 0 0 4-4v-1" />
+  </Svg>
+)
+
+export const TodayIcon = (p) => (
+  <Svg {...p}>
+    <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
+    <path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" />
+    <circle cx="12" cy="14.5" r="1.6" fill="currentColor" stroke="none" />
+  </Svg>
+)

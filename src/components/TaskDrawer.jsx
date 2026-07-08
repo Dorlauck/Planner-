@@ -3,7 +3,8 @@ import { TASK_COLORS } from '../lib/palette'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { compressImage } from '../lib/image'
-import { CloseIcon, PlusIcon, TrashIcon, ImageIcon } from './icons'
+import { CloseIcon, PlusIcon, TrashIcon, ImageIcon, RepeatIcon } from './icons'
+import { setSubRecur, WEEKDAYS, recurLabel } from '../lib/planning'
 
 const STATUSES = [
   { id: 'todo', label: 'À faire' },
@@ -13,6 +14,82 @@ const STATUSES = [
 
 const labelCls = 'text-[11px] font-semibold uppercase tracking-wider text-muted mb-2'
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2))
+
+function ChecklistItem({ item, onToggle, onRemove, onSetRecur }) {
+  const [menu, setMenu] = useState(false)
+  const recur = item.recur || null
+  return (
+    <li className="group relative flex items-center gap-2.5">
+      <button
+        onClick={() => onToggle(item.id)}
+        className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${
+          item.done ? 'bg-accent border-accent text-accent-fg' : 'border-faint'
+        }`}
+      >
+        {item.done && (
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12.5l4 4 10-10" />
+          </svg>
+        )}
+      </button>
+      <span className={`flex-1 text-sm ${item.done ? 'line-through text-faint' : 'text-fg'}`}>{item.text}</span>
+
+      {recur && <span className="text-[10px] text-muted shrink-0">{recurLabel(recur)}</span>}
+      <button
+        onClick={() => setMenu((m) => !m)}
+        title="Répéter"
+        className={`shrink-0 transition ${recur ? 'text-fg' : 'text-faint opacity-0 group-hover:opacity-100'} hover:text-fg`}
+      >
+        <RepeatIcon size={14} />
+      </button>
+      <button onClick={() => onRemove(item.id)} className="shrink-0 text-faint opacity-0 group-hover:opacity-100 hover:text-red-500 transition">
+        <CloseIcon size={13} />
+      </button>
+
+      {menu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
+          <div className="absolute right-0 top-6 z-50 w-40 bg-surface border border-line rounded-lg shadow-soft p-1">
+            <button
+              onClick={() => {
+                onSetRecur(item.id, null)
+                setMenu(false)
+              }}
+              className={`w-full text-left px-2 py-1.5 rounded-md text-sm hover:bg-surface2 ${!recur ? 'text-fg font-medium' : 'text-muted'}`}
+            >
+              Aucune
+            </button>
+            <button
+              onClick={() => {
+                onSetRecur(item.id, { type: 'daily' })
+                setMenu(false)
+              }}
+              className={`w-full text-left px-2 py-1.5 rounded-md text-sm hover:bg-surface2 ${recur?.type === 'daily' ? 'text-fg font-medium' : 'text-muted'}`}
+            >
+              Chaque jour
+            </button>
+            <div className="grid grid-cols-4 gap-1 p-1">
+              {WEEKDAYS.map((w) => (
+                <button
+                  key={w.day}
+                  onClick={() => {
+                    onSetRecur(item.id, { type: 'weekly', weekday: w.day })
+                    setMenu(false)
+                  }}
+                  className={`px-1 py-1 rounded text-xs transition ${
+                    recur?.type === 'weekly' && recur.weekday === w.day ? 'bg-accent text-accent-fg' : 'text-muted hover:bg-surface2'
+                  }`}
+                >
+                  {w.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </li>
+  )
+}
 
 export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, onSave, onDelete, onRemoveDep, onAttachmentsChange }) {
   const { user } = useAuth()
@@ -82,6 +159,7 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
   }
   const toggleItem = (id) => saveChecklist(checklist.map((c) => (c.id === id ? { ...c, done: !c.done } : c)))
   const removeItem = (id) => saveChecklist(checklist.filter((c) => c.id !== id))
+  const setRecur = (id, recur) => saveChecklist(setSubRecur(checklist, id, recur))
 
   // ---- Images -----------------------------------------------------------
   async function uploadFiles(files) {
@@ -251,27 +329,7 @@ export default function TaskDrawer({ task, tasks, deps, legend = {}, onClose, on
                 </p>
                 <ul className="space-y-1">
                   {checklist.map((item) => (
-                    <li key={item.id} className="group flex items-center gap-2.5">
-                      <button
-                        onClick={() => toggleItem(item.id)}
-                        className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${
-                          item.done ? 'bg-accent border-accent text-accent-fg' : 'border-faint'
-                        }`}
-                      >
-                        {item.done && (
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M5 12.5l4 4 10-10" />
-                          </svg>
-                        )}
-                      </button>
-                      <span className={`flex-1 text-sm ${item.done ? 'line-through text-faint' : 'text-fg'}`}>{item.text}</span>
-                      <button
-                        onClick={() => removeItem(item.id)}
-                        className="opacity-0 group-hover:opacity-100 text-faint hover:text-red-500 transition"
-                      >
-                        <CloseIcon size={13} />
-                      </button>
-                    </li>
+                    <ChecklistItem key={item.id} item={item} onToggle={toggleItem} onRemove={removeItem} onSetRecur={setRecur} />
                   ))}
                 </ul>
                 <div className="flex items-center gap-2 mt-2">
