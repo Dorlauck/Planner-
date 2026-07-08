@@ -533,7 +533,9 @@ function Board({ project, legend }) {
 
   const onNodesDelete = useCallback(
     (removed) => {
-      const taskIds = removed.filter((n) => n.type === 'task').map((n) => n.id)
+      // Milestones are task rows too (type 'milestone'); anything that isn't a
+      // free-text node is a task.
+      const taskIds = removed.filter((n) => n.type !== 'text').map((n) => n.id)
       const textIds = removed.filter((n) => n.type === 'text').map((n) => n.id)
       removingTaskIds.current = new Set(taskIds)
       setTimeout(() => (removingTaskIds.current = new Set()), 0)
@@ -859,7 +861,7 @@ function Board({ project, legend }) {
       {showPlanning && (
         <PlanningView
           tasks={tasks}
-          legend={legend}
+          states={states}
           onClose={() => setShowPlanning(false)}
           onSchedule={saveTask}
           onOpenTask={setOpenId}

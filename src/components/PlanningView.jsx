@@ -1,53 +1,66 @@
 import { useMemo, useState } from 'react'
 import {
+  startOfWeek,
   endOfWeek,
   addWeeks,
-  startOfWeek,
+  addMonths,
   startOfMonth,
   endOfMonth,
-  addMonths,
-  startOfQuarter,
-  addQuarters,
-  getQuarter,
   eachDayOfInterval,
-  eachWeekOfInterval,
+  isSameMonth,
   format,
 } from 'date-fns'
 import { fr } from 'date-fns/locale'
-import { TASK_COLORS } from '../lib/palette'
 import { ChevronLeft, ChevronRight } from './icons'
 
 const iso = (d) => format(d, 'yyyy-MM-dd')
 const monday = (d) => startOfWeek(d, { weekStartsOn: 1 })
-const firstOfMonth = (d) => startOfMonth(d)
 
-const VIEWS = [
-  { id: 'week', label: 'Semaine' },
-  { id: 'month', label: 'Mois' },
-  { id: 'quarter', label: 'Trimestre' },
-]
-
-function Chip({ task, onOpen }) {
+function Chip({ item, compact, onToggle, onOpen }) {
   return (
     <div
       draggable
       onDragStart={(e) => {
-        e.dataTransfer.setData('text/plain', task.id)
+        e.dataTransfer.setData('text/plain', JSON.stringify({ kind: item.kind, taskId: item.taskId, subId: item.subId }))
         e.dataTransfer.effectAllowed = 'move'
       }}
-      onClick={() => onOpen?.(task.id)}
-      className="flex items-center gap-2 bg-surface border border-line rounded-lg px-2.5 py-1.5 cursor-grab active:cursor-grabbing hover:border-faint transition"
-      title={task.title}
+      className={`group flex items-center gap-1.5 bg-surface border border-line rounded-md cursor-grab active:cursor-grabbing hover:border-faint transition ${
+        compact ? 'px-1.5 py-0.5' : 'px-2 py-1.5'
+      }`}
+      title={item.taskTitle ? `${item.taskTitle} — ${item.text}` : item.text}
     >
-      <span className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/10" style={{ backgroundColor: task.color || 'rgb(var(--faint))' }} />
-      <span className={`text-[13px] truncate ${task.status === 'done' ? 'line-through text-faint' : 'text-fg'}`}>
-        {task.title}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onToggle(item)
+        }}
+        className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition ${
+          item.done ? 'bg-accent border-accent text-accent-fg' : 'border-faint'
+        }`}
+      >
+        {item.done && (
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12.5l4 4 10-10" />
+          </svg>
+        )}
+      </button>
+      <span
+        className="w-1.5 h-1.5 rounded-full shrink-0"
+        style={{ backgroundColor: item.color || 'rgb(var(--faint))' }}
+      />
+      <span
+        onClick={() => onOpen?.(item.taskId)}
+        className={`flex-1 min-w-0 truncate ${compact ? 'text-[11px]' : 'text-[13px]'} ${
+          item.done ? 'line-through text-faint' : 'text-fg'
+        }`}
+      >
+        {item.text}
       </span>
     </div>
   )
 }
 
-function Drop({ onDropTask, className, children }) {
+function Drop({ onDropItem, className, children }) {
   const [over, setOver] = useState(false)
   return (
     <div
@@ -60,8 +73,13 @@ function Drop({ onDropTask, className, children }) {
       onDrop={(e) => {
         e.preventDefault()
         setOver(false)
-        const id = e.dataTransfer.getData('text/plain')
-        if (id) onDropTask(id)
+        const raw = e.dataTransfer.getData('text/plain')
+        if (!raw) return
+        try {
+          onDropItem(JSON.parse(raw))
+        } catch {
+          /* ignore */
+        }
       }}
       className={`${className} ${over ? 'ring-2 ring-accent/40 bg-surface2' : ''} transition`}
     >
@@ -70,100 +88,202 @@ function Drop({ onDropTask, className, children }) {
   )
 }
 
-export default function PlanningView({ tasks, legend = {}, onClose, onSchedule, onOpenTask }) {
-  const [view, setView] = useState('month')
+export default function PlanningView({ tasks, states, onClose, onSchedule, onOpenTask }) {
+  const [view, setView] = useState('week')
   const [cursor, setCursor] = useState(() => new Date())
+  const today = iso(new Date())
 
-  const pool = useMemo(() => {
-    const ok = (t) => !t.is_milestone && t.status !== 'done'
-    if (view === 'quarter') return tasks.filter((t) => ok(t) && !t.plan_month)
-    if (view === 'month') {
-      const m = iso(firstOfMonth(cursor))
-      return tasks.filter((t) => ok(t) && t.plan_month === m && !t.week_start)
+  const tasksById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])
+
+  // Build the plannable items = actionable subtasks of *unblocked* tasks (or the
+  // task itself if it has no subtasks). Milestones are excluded.
+  const items = useMemo(() => {
+    const out = []
+    for (const t of tasks) {
+      if (t.is_milestone) continue
+      const blocked = states?.get(t.id)?.blocked ?? false
+      const list = Array.isArray(t.checklist) ? t.checklist : []
+      if (list.length) {
+        for (const c of list) {
+          out.push({
+            key: `s:${t.id}:${c.id}`,
+            kind: 'sub',
+            taskId: t.id,
+            subId: c.id,
+            text: c.text,
+            color: t.color,
+            taskTitle: t.title,
+            date: c.date || null,
+            done: !!c.done,
+            blocked,
+          })
+        }
+      } else {
+        out.push({
+          key: `t:${t.id}`,
+          kind: 'task',
+          taskId: t.id,
+          text: t.title,
+          color: t.color,
+          taskTitle: null,
+          date: t.task_date || null,
+          done: t.status === 'done',
+          blocked,
+        })
+      }
     }
-    const w = iso(monday(cursor))
-    return tasks.filter((t) => ok(t) && t.week_start === w && !t.task_date)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, view, cursor])
+    return out
+  }, [tasks, states])
 
+  const pool = items.filter((i) => !i.date && !i.done && !i.blocked)
+  const overdue = items.filter((i) => i.date && i.date < today && !i.done)
+  const itemsByDay = useMemo(() => {
+    const m = new Map()
+    for (const i of items) {
+      if (!i.date) continue
+      if (!m.has(i.date)) m.set(i.date, [])
+      m.get(i.date).push(i)
+    }
+    return m
+  }, [items])
+
+  // Backlog grouped by parent task.
   const poolGroups = useMemo(() => {
-    const order = [...TASK_COLORS, null]
-    return order
-      .map((c) => ({ color: c, items: pool.filter((t) => (t.color ?? null) === c) }))
-      .filter((g) => g.items.length)
-  }, [pool])
+    const groups = []
+    const byTask = new Map()
+    for (const i of pool) {
+      if (!byTask.has(i.taskId)) {
+        const g = { taskId: i.taskId, title: tasksById.get(i.taskId)?.title, color: i.color, items: [] }
+        byTask.set(i.taskId, g)
+        groups.push(g)
+      }
+      byTask.get(i.taskId).items.push(i)
+    }
+    return groups
+  }, [pool, tasksById])
 
-  const dropOnDay = (day) => (id) =>
-    onSchedule(id, { task_date: iso(day), week_start: iso(monday(day)), plan_month: iso(firstOfMonth(day)) })
-  const dropOnWeek = (mon) => (id) =>
-    onSchedule(id, { week_start: iso(mon), plan_month: iso(firstOfMonth(mon)), task_date: null })
-  const dropOnMonth = (mth) => (id) => onSchedule(id, { plan_month: iso(mth), week_start: null, task_date: null })
-
-  const dropOnPool = (id) => {
-    if (view === 'quarter') onSchedule(id, { plan_month: null, week_start: null, task_date: null })
-    else if (view === 'month') onSchedule(id, { week_start: null, task_date: null })
-    else onSchedule(id, { task_date: null })
+  // ---- Scheduling -------------------------------------------------------
+  function schedule(payload, dateISO) {
+    const t = tasksById.get(payload.taskId)
+    if (!t) return
+    if (payload.kind === 'sub') {
+      const list = (Array.isArray(t.checklist) ? t.checklist : []).map((c) =>
+        c.id === payload.subId ? { ...c, date: dateISO } : c,
+      )
+      onSchedule(payload.taskId, { checklist: list })
+    } else {
+      onSchedule(payload.taskId, { task_date: dateISO })
+    }
   }
 
-  const step = (dir) =>
-    setCursor((c) => (view === 'week' ? addWeeks(c, dir) : view === 'month' ? addMonths(c, dir) : addQuarters(c, dir)))
+  function toggleDone(item) {
+    const t = tasksById.get(item.taskId)
+    if (!t) return
+    if (item.kind === 'sub') {
+      const list = (Array.isArray(t.checklist) ? t.checklist : []).map((c) =>
+        c.id === item.subId ? { ...c, done: !c.done } : c,
+      )
+      onSchedule(item.taskId, { checklist: list })
+    } else {
+      onSchedule(item.taskId, { status: item.done ? 'todo' : 'done' })
+    }
+  }
 
+  function rolloverOverdue() {
+    for (const i of overdue) schedule({ kind: i.kind, taskId: i.taskId, subId: i.subId }, today)
+  }
+
+  // ---- Period label + nav ----------------------------------------------
+  const step = (dir) => setCursor((c) => (view === 'week' ? addWeeks(c, dir) : addMonths(c, dir)))
   const periodLabel =
     view === 'week'
       ? `Semaine du ${format(monday(cursor), 'd MMM', { locale: fr })}`
-      : view === 'month'
-        ? format(cursor, 'MMMM yyyy', { locale: fr })
-        : `T${getQuarter(cursor)} ${format(cursor, 'yyyy')}`
+      : format(cursor, 'MMMM yyyy', { locale: fr })
 
-  const bucketCls = 'bg-surface2/60 rounded-xl border border-line p-3'
-
-  let calendar = null
+  // ---- Calendar ---------------------------------------------------------
+  let calendar
   if (view === 'week') {
     const days = eachDayOfInterval({ start: monday(cursor), end: endOfWeek(cursor, { weekStartsOn: 1 }) })
     calendar = (
       <div className="grid grid-cols-7 gap-2 h-full">
-        {days.map((day) => (
-          <Drop key={iso(day)} onDropTask={dropOnDay(day)} className={`flex flex-col min-h-0 ${bucketCls}`}>
-            <p className="text-[11px] font-semibold text-muted mb-2 capitalize">{format(day, 'EEE d', { locale: fr })}</p>
-            <div className="flex-1 overflow-y-auto scrollbar-thin space-y-1.5">
-              {tasks.filter((t) => t.task_date === iso(day)).map((t) => (
-                <Chip key={t.id} task={t} onOpen={onOpenTask} />
-              ))}
-            </div>
-          </Drop>
-        ))}
-      </div>
-    )
-  } else if (view === 'month') {
-    const weeks = eachWeekOfInterval({ start: startOfMonth(cursor), end: endOfMonth(cursor) }, { weekStartsOn: 1 })
-    calendar = (
-      <div className="flex flex-col gap-2 h-full overflow-y-auto scrollbar-thin">
-        {weeks.map((mon) => (
-          <Drop key={iso(mon)} onDropTask={dropOnWeek(mon)} className={bucketCls}>
-            <p className="text-[11px] font-semibold text-muted mb-2">Semaine du {format(mon, 'd MMM', { locale: fr })}</p>
-            <div className="flex flex-wrap gap-1.5 min-h-[28px]">
-              {tasks.filter((t) => t.week_start === iso(mon)).map((t) => (
-                <Chip key={t.id} task={t} onOpen={onOpenTask} />
-              ))}
-            </div>
-          </Drop>
-        ))}
+        {days.map((day) => {
+          const key = iso(day)
+          const dayItems = itemsByDay.get(key) ?? []
+          const isToday = key === today
+          return (
+            <Drop
+              key={key}
+              onDropItem={(p) => schedule(p, key)}
+              className={`flex flex-col min-h-0 rounded-xl border p-2 ${
+                isToday ? 'border-accent/50 bg-surface' : 'border-line bg-surface2/50'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-[11px] font-semibold capitalize ${isToday ? 'text-fg' : 'text-muted'}`}>
+                  {format(day, 'EEE d', { locale: fr })}
+                </span>
+                {dayItems.length > 0 && (
+                  <span className={`text-[10px] ${dayItems.length > 6 ? 'text-amber-500' : 'text-faint'}`}>
+                    {dayItems.length}
+                  </span>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto scrollbar-thin space-y-1">
+                {dayItems.map((i) => (
+                  <Chip key={i.key} item={i} onToggle={toggleDone} onOpen={onOpenTask} />
+                ))}
+              </div>
+            </Drop>
+          )
+        })}
       </div>
     )
   } else {
-    const months = [0, 1, 2].map((i) => addMonths(startOfQuarter(cursor), i))
+    const gridStart = monday(startOfMonth(cursor))
+    const gridEnd = endOfWeek(endOfMonth(cursor), { weekStartsOn: 1 })
+    const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
     calendar = (
-      <div className="grid grid-cols-3 gap-3 h-full">
-        {months.map((mth) => (
-          <Drop key={iso(mth)} onDropTask={dropOnMonth(mth)} className={`flex flex-col min-h-0 ${bucketCls}`}>
-            <p className="text-xs font-semibold text-fg mb-2 capitalize">{format(mth, 'MMMM', { locale: fr })}</p>
-            <div className="flex-1 overflow-y-auto scrollbar-thin space-y-1.5">
-              {tasks.filter((t) => t.plan_month === iso(mth)).map((t) => (
-                <Chip key={t.id} task={t} onOpen={onOpenTask} />
-              ))}
+      <div className="flex flex-col h-full">
+        <div className="grid grid-cols-7 gap-2 mb-1">
+          {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((d) => (
+            <div key={d} className="text-[10px] font-semibold uppercase tracking-wider text-faint text-center">
+              {d}
             </div>
-          </Drop>
-        ))}
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-2 flex-1 min-h-0" style={{ gridAutoRows: '1fr' }}>
+          {days.map((day) => {
+            const key = iso(day)
+            const dayItems = itemsByDay.get(key) ?? []
+            const inMonth = isSameMonth(day, cursor)
+            const isToday = key === today
+            return (
+              <Drop
+                key={key}
+                onDropItem={(p) => schedule(p, key)}
+                className={`flex flex-col min-h-0 rounded-lg border p-1.5 ${
+                  isToday ? 'border-accent/50 bg-surface' : 'border-line'
+                } ${inMonth ? 'bg-surface2/40' : 'bg-transparent opacity-50'}`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-[11px] font-medium ${isToday ? 'text-fg font-semibold' : 'text-muted'}`}>
+                    {format(day, 'd')}
+                  </span>
+                  {dayItems.length > 0 && (
+                    <span className={`text-[9px] ${dayItems.length > 6 ? 'text-amber-500' : 'text-faint'}`}>
+                      {dayItems.length}
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1 overflow-y-auto scrollbar-thin space-y-0.5">
+                  {dayItems.map((i) => (
+                    <Chip key={i.key} item={i} compact onToggle={toggleDone} onOpen={onOpenTask} />
+                  ))}
+                </div>
+              </Drop>
+            )
+          })}
+        </div>
       </div>
     )
   }
@@ -174,7 +294,10 @@ export default function PlanningView({ tasks, legend = {}, onClose, onSchedule, 
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-semibold tracking-tight text-fg">Planning</h2>
           <div className="flex gap-1 p-1 bg-surface2 rounded-lg">
-            {VIEWS.map((v) => (
+            {[
+              { id: 'week', label: 'Semaine' },
+              { id: 'month', label: 'Mois' },
+            ].map((v) => (
               <button
                 key={v.id}
                 onClick={() => setView(v.id)}
@@ -206,27 +329,33 @@ export default function PlanningView({ tasks, legend = {}, onClose, onSchedule, 
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        <Drop onDropTask={dropOnPool} className="w-72 shrink-0 border-r border-line bg-surface/40 p-4 overflow-y-auto scrollbar-thin">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-3">
-            {view === 'quarter' ? 'À planifier' : view === 'month' ? 'À répartir dans les semaines' : 'À répartir dans les jours'}
-          </p>
+        {/* Backlog */}
+        <Drop onDropItem={(p) => schedule(p, null)} className="w-72 shrink-0 border-r border-line bg-surface/40 p-4 overflow-y-auto scrollbar-thin">
+          {overdue.length > 0 && (
+            <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+              <p className="text-sm text-red-500 font-medium mb-1.5">{overdue.length} en retard</p>
+              <button onClick={rolloverOverdue} className="text-xs text-red-500 underline hover:no-underline">
+                Tout passer à aujourd'hui
+              </button>
+            </div>
+          )}
+
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-3">À planifier</p>
           {pool.length === 0 ? (
             <p className="text-sm text-muted">
-              Rien à placer ici. {view !== 'quarter' && 'Reviens à la vue précédente pour en amener.'}
+              Rien à planifier. Seules les sous-tâches des tâches <strong>débloquées</strong> apparaissent ici.
             </p>
           ) : (
             <div className="space-y-4">
               {poolGroups.map((g) => (
-                <div key={g.color ?? 'none'}>
+                <div key={g.taskId}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="w-2.5 h-2.5 rounded-full border border-black/10" style={{ backgroundColor: g.color || 'rgb(var(--faint))' }} />
-                    <span className="text-[11px] font-medium text-muted">
-                      {(g.color && legend[g.color]) || (g.color ? 'Sans nom' : 'Sans couleur')}
-                    </span>
+                    <span className="text-[11px] font-medium text-muted truncate">{g.title}</span>
                   </div>
-                  <div className="space-y-1.5">
-                    {g.items.map((t) => (
-                      <Chip key={t.id} task={t} onOpen={onOpenTask} />
+                  <div className="space-y-1">
+                    {g.items.map((i) => (
+                      <Chip key={i.key} item={i} onToggle={toggleDone} onOpen={onOpenTask} />
                     ))}
                   </div>
                 </div>
